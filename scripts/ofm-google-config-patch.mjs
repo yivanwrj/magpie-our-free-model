@@ -45,8 +45,9 @@ export function externalizeEacCredentials(directory) {
   for (const file of ['src/vault-data.js', 'src/vault-anchor.js']) fs.unlinkSync(path.join(directory, file));
   const serviceFile = 'packages/standalone/service.mjs';
   const original = fs.readFileSync(path.join(directory, serviceFile), 'utf8');
+  if (original.split('logger = console, refresh = true, probe,').length !== 2 || original.split('eac = createStandaloneEac({\n      dataDir,').length !== 2) throw new Error('Standalone EAC integration point changed');
   const updated = original.replace('logger = console, refresh = true, probe,', 'logger = console, refresh = true, probe, eacCredential, eacSetup,')
-    .replace('dataDir,\n      onSaved:', 'dataDir, credentialOf: eacCredential, setup: eacSetup,\n      onSaved:');
+    .replace('eac = createStandaloneEac({\n      dataDir,', 'eac = createStandaloneEac({\n      dataDir, credentialOf: eacCredential, setup: eacSetup,');
   if (updated === original || !updated.includes('credentialOf: eacCredential')) throw new Error('Standalone EAC integration point changed');
   replace(serviceFile, updated, 'Accept an original EAC credential function and safe setup diagnostics; preserve server authorization and login flow.');
   return adaptations;

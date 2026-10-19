@@ -85,7 +85,7 @@ export async function createRemoteConsole(service, { sessionMs = 30 * 60_000, on
         return res.end('远程通道已关闭，可以关闭此页面。Magpie 的模型服务继续运行。');
       }
       if (await login.handle(req, res, target, id, origin)) return;
-      const asset = target.pathname === '/' || /^\/assets\/[\w-]+\.(js|css)$/.test(target.pathname);
+      const asset = ['/', '/magpie-models'].includes(target.pathname) || /^\/assets\/[\w-]+\.(js|css)$/.test(target.pathname);
       const api = /^\/api\/management\/[\w/-]+$/.test(target.pathname);
       if (!asset && !api || ['/api/management/session', '/api/management/login/terminal'].includes(target.pathname)) {
         return fail(res, 404, '远程入口仅提供账号管理控制台');
@@ -97,7 +97,7 @@ export async function createRemoteConsole(service, { sessionMs = 30 * 60_000, on
       for (const name of ['content-type', 'accept']) if (req.headers[name]) headers[name] = req.headers[name];
       const out = http.request(new URL(target.pathname + target.search, upstream), { method: req.method, headers }, back => {
         const returned = {};
-        for (const name of ['content-type', 'content-security-policy', 'x-content-type-options']) if (back.headers[name]) returned[name] = back.headers[name];
+        for (const name of ['content-type', 'content-disposition', 'content-security-policy', 'x-content-type-options']) if (back.headers[name]) returned[name] = back.headers[name];
         returned['cache-control'] = 'no-store'; returned['referrer-policy'] = 'no-referrer';
         // Never leak upstream cookies, keys via URL redirects, or forwarding headers.
         if (back.statusCode >= 300 && back.statusCode < 400) { back.resume(); return fail(res, 502, '控制台返回了不支持的重定向'); }

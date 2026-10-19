@@ -4,6 +4,7 @@ import { buildStats } from '../../src/core/stats.js'
 import { generateKey } from '../../src/forward.js'
 import { structuralRejection } from '../../src/trust.js'
 import { openLoginTerminal } from './login-terminal.mjs'
+import { publicModelVisibility, validateModelVisibility, isModelHidden } from '../../src/store.js'
 
 const PREFIX = '/api/management'
 const BOOTSTRAP_MS = 10 * 60_000
@@ -48,10 +49,12 @@ async function readBody(req, limit = MAX_BODY_BYTES) {
 }
 
 function validateSettings(patch) {
-  const booleans = new Set(['enabled', 'exposeRegionModels', 'streamRecovery', 'standaloneProbe'])
-  const numbers = { probeIntervalMinutes: [1, 1440], defaultMaxTokens: [512, 131072] }
+  const visibility = validateModelVisibility(patch)
+  const booleans = new Set(['enabled', 'exposeRegionModels', 'streamRecovery', 'standaloneProbe', 'standaloneLanEnabled'])
+  const numbers = { probeIntervalMinutes: [1, 1440], defaultMaxTokens: [512, 131072], standaloneLanPort: [0, 65535] }
   const result = {}
   for (const [key, value] of Object.entries(patch)) {
+    if (Object.hasOwn(visibility, key)) { result[key] = visibility[key]; continue }
     if (booleans.has(key)) {
       if (typeof value !== 'boolean') throw fail(400, `${key} 必须是布尔值`)
     } else if (Object.hasOwn(numbers, key)) {
@@ -65,17 +68,20 @@ function validateSettings(patch) {
 
 export function managementSettings(value) {
   return {
+    ...publicModelVisibility(value),
     enabled: value.enabled !== false,
     exposeRegionModels: value.exposeRegionModels !== false,
     streamRecovery: value.streamRecovery !== false,
     standaloneProbe: value.standaloneProbe === true,
+    standaloneLanEnabled: value.standaloneLanEnabled === true,
+    standaloneLanPort: value.standaloneLanPort ?? 0,
     probeIntervalMinutes: value.probeIntervalMinutes ?? 15,
     defaultMaxTokens: value.defaultMaxTokens ?? 32768,
   }
 }
 
 /** 管理读写要求鉴权；登录恢复仅允许同源页面触发固定本机动作。 */
-export function createManagement({ stores, runtime, channels, eac, info, onSettingsChanged, loginTerminal = openLoginTerminal }) {
+export function createManagement({ stores, runtime, channels, eac, info, onSettingsChanged, managementExtension, loginTerminal = openLoginTerminal }) {
   let bootstrap = { token: crypto.randomBytes(32).toString('base64url'), until: Date.now() + BOOTSTRAP_MS }
   const sessions = new Map()
   let cookieName
@@ -86,7 +92,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
   const assets = new Map([...ASSETS].map(([url, [file, type]]) => [
     url, { type, body: file === 'index.html'
       ? Buffer.from(fs.readFileSync(new URL(`./web/${file}`, import.meta.url), 'utf8')
-        .replace('data-login-platform="unsupported"', `data-login-platform="${loginPlatform}"`))
+        .replace('data-login-platform="unsupported"', `data-login-platform="${loginPlatform}"`).replace('</body>', '<link rel="stylesheet" href="/assets/magpie-console.css"><script type="module" src="/assets/magpie-console.js"></script></body>'))
       : fs.readFileSync(new URL(`./web/${file}`, import.meta.url)) },
   ]))
   // 只公开构建清单中经过路径校验的 JS/CSS，绝不按请求路径读取磁盘。
@@ -98,6 +104,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     type: name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
     body: fs.readFileSync(new URL(`./web/${name}`, import.meta.url)),
   })
+  for (const [url, asset] of managementExtension?.assets ?? []) assets.set(url, asset)
   const json = (res, status, payload, headers = {}) => {
     res.writeHead(status, { ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8', ...headers })
     res.end(JSON.stringify(payload))
@@ -126,6 +133,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       throw fail(500, '无法保存设置，请检查数据目录权限和磁盘空间')
     }
   }
+  managementExtension?.bindSettings(stores, persist, onSettingsChanged)
   const summary = () => {
     const state = runtime.state()
     const available = stores.availability.get()
@@ -136,14 +144,17 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       eacAuth: eac?.cached(),
       settings: managementSettings(stores.settings.get()),
       catalogSyncedAt: stores.settings.get().catalogSyncedAt ?? 0,
-      probedAt: available.at ?? 0,
+      probedAt: managementExtension?.healthCheckedAt() ?? available.at ?? 0,
       catalog: state.catalog.map(entry => ({
         id: entry.id, name: entry.name, channel: entry.channel ?? 'anonymous',
         vision: entry.vision === true, reasoning: entry.reasoning === true || (entry.reasoning !== null && typeof entry.reasoning === 'object'),
         contextWindow: entry.contextWindow ?? entry.context_window, maxOutput: entry.maxOutput ?? entry.max_tokens,
         routable: routable.has(entry.id),
+        hiddenByUser: isModelHidden(entry, state.settings),
+        hiddenByGroup: isModelHidden(entry, { ...state.settings, hiddenModelIds: [] }),
         availability: entry.channel ? 'listed' : available.results?.[entry.id]?.state ?? 'unknown',
         ttftMs: available.results?.[entry.id]?.ttftMs ?? null,
+        ...managementExtension?.healthRow(entry.id, routable.has(entry.id)),
       })),
     }
   }
@@ -184,6 +195,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
       return
     }
     if (!authenticated(req)) throw fail(401, '请先登录管理页面')
+    if (await managementExtension?.handle({ req, res, pathname, stores, runtime, json, readBody, persist })) return
     if (method === 'POST' && pathname === `${PREFIX}/logout`) {
       await readBody(req)
       sessions.delete(cookie(req))
@@ -199,6 +211,7 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
         if (body.method === 'gateway.setEnabled') {
           if (typeof body.payload?.enabled !== 'boolean') throw fail(400, 'enabled 必须是布尔值')
           persist({ enabled: body.payload.enabled })
+          await onSettingsChanged()
         }
         const base = new URL(info().baseUrl)
         json(res, 200, { ok: true, value: {
@@ -234,8 +247,16 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     } else if (method === 'POST' && pathname === `${PREFIX}/settings`) {
       const patch = validateSettings(await readBody(req))
       persist(patch)
-      onSettingsChanged()
-      json(res, 200, { settings: managementSettings(stores.settings.get()) })
+      await managementExtension?.syncSettings(patch)
+      await onSettingsChanged()
+      json(res, 200, { settings: managementSettings(stores.settings.get()), lan: info().lan })
+    } else if (method === 'GET' && pathname === `${PREFIX}/lan/key`) {
+      json(res, 200, { key: stores.settings.get().standaloneLanKey ?? '' })
+    } else if (method === 'POST' && pathname === `${PREFIX}/lan/key/rotate`) {
+      const body = await readBody(req)
+      if (body.confirm !== true || Object.keys(body).length !== 1) throw fail(400, 'LAN key rotation requires only confirm: true')
+      persist({ standaloneLanKey: generateKey() })
+      json(res, 200, { key: stores.settings.get().standaloneLanKey })
     } else if (method === 'GET' && pathname === `${PREFIX}/key`) {
       json(res, 200, { key: stores.settings.get().forwardKey })
     } else if (method === 'POST' && pathname === `${PREFIX}/key/rotate`) {
@@ -252,7 +273,8 @@ export function createManagement({ stores, runtime, channels, eac, info, onSetti
     } else if (method === 'POST' && pathname === `${PREFIX}/models/refresh`) {
       const body = await readBody(req)
       if (body.probe !== undefined && typeof body.probe !== 'boolean') throw fail(400, 'probe 必须是布尔值')
-      await runtime.refreshCatalog({ probe: body.probe === true, force: body.probe === true })
+      await runtime.refreshCatalog({ probe: managementExtension ? false : body.probe === true, force: body.probe === true })
+      if (managementExtension && body.probe === true) await managementExtension.probe()
       json(res, 200, summary())
     } else if (method === 'POST' && pathname === `${PREFIX}/models/test`) {
       const body = await readBody(req)

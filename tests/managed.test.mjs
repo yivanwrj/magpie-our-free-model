@@ -99,6 +99,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     const body = raw ? JSON.parse(raw) : {};
     requests.push({ pathname, body, headers: req.headers });
     const json = value => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(value)); };
+    if (body.model === 'fixture-rate-limit') { res.writeHead(429, { 'retry-after': '30' }); return res.end('{}'); }
     if (req.headers['x-ofm-signature']) {
       const expected = crypto.createHmac('sha256', 'fixture-only-not-a-production-secret')
         .update(`${req.headers['x-ofm-timestamp']}\n${req.method}\n${pathname}\n${crypto.createHash('sha256').update(raw).digest('hex')}`)
@@ -113,6 +114,11 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     if (pathname.endsWith('/auth/poll')) return json({ status: 'ok', token: 'fixture-eac', login: 'fixture', ackRequired: true });
     if (pathname.endsWith('/auth/ack') || pathname.endsWith('/auth/logout')) return json({ ok: true });
     if (pathname.endsWith('/pool')) return json({ ok: true, inflight: 1 });
+    if (pathname === '/remote/api/v1/models') return json({ data: [
+      { id: 'openrouter/free', pricing: { prompt: '0', completion: '0' } },
+      { id: 'vendor/offer', name: 'Temporary offer', pricing: { prompt: '0', completion: '0' } },
+      { id: 'vendor/paid', pricing: { prompt: '0.01', completion: '0.01' } },
+    ] });
     if (pathname.endsWith('/models')) return json({ data: req.headers['x-ofm-signature']
       ? [{ id: 'fixture-eac-model' }] : pathname === '/models' ? [{ id: 'fixture/free', isFree: true }]
       : [{ id: 'mimo-v2.6-flash-free' }] });
@@ -206,7 +212,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
       assert.equal(status.available, false);
       assert.equal(status.setup.state, 'failed');
       assert.match(status.setup.message, /本机来源加载失败/);
-      assert.ok((await isolated.command('models')).some(model => model.id === 'mimo-v2.6-flash-free'));
+      await until(async () => (await isolated.command('models')).some(model => model.id === 'mimo-v2.6-flash-free'));
     } finally { await isolated.close(); }
   });
   await t.test('one-use console login gives a real management cookie and can be reopened', async () => {
@@ -215,7 +221,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     const cookie = handoff.headers.get('set-cookie');
     assert.match(cookie, /HttpOnly/);
     const summary = await api('/api/management/summary', undefined, cookie.split(';')[0]);
-    assert.equal(summary.status, 200);
+    assert.equal(summary.status, 200, JSON.stringify(summary.body));
     assert.equal(summary.body.channels.state, 'ready');
     assert.equal(summary.body.networkMode, 'fixture');
     assert.equal((await fetch(login.url)).status, 401);
@@ -239,11 +245,61 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     assert.equal(opened.status, 303);
     const cookie = opened.headers['set-cookie'][0].split(';')[0];
     const summary = await request('/api/management/summary', { headers: { cookie } });
-    assert.equal(summary.status, 200); assert.equal(JSON.parse(summary.body).channels.state, 'ready');
+    assert.equal(summary.status, 200, JSON.stringify(summary.body)); assert.equal(JSON.parse(summary.body).channels.state, 'ready');
+    assert.equal((await request('/magpie-models', { headers: { cookie } })).status, 200);
+    assert.equal((await request('/api/management/magpie/models', { headers: { cookie } })).status, 200);
     const closed = await request('/remote/close', { method: 'POST', headers: { cookie, origin: `https://${hostname}` } });
     assert.equal(closed.status, 200);
     await until(async () => { try { await fetch(target); return false; } catch { return true; } });
     assert.equal((await api('/api/management/summary')).status, 200);
+  });
+  await t.test('aggregation console authenticates, persists keys privately and updates the live catalog', async () => {
+    const url = conn.base.replace(/\/v1$/, '');
+    assert.equal((await fetch(url + '/api/management/magpie/models')).status, 401);
+    assert.equal((await fetch(url + '/magpie-models')).status, 200);
+    assert.equal((await fetch(url + '/api/management/magpie/upstream/status')).status, 401);
+    assert.equal((await fetch(url + '/api/management/magpie/channel-source/import', { method: 'POST', body: 'bad' })).status, 401);
+    assert.equal((await api('/api/management/magpie/channel-source/import', { invalid: true })).status, 400);
+    const updaterStatus = await api('/api/management/magpie/upstream/status');
+    assert.equal(updaterStatus.status, 200); assert.equal(updaterStatus.body.preferences.intervalHours, 24);
+    assert.equal((await api('/api/management/magpie/upstream/settings', { enabled: false, autoBuild: false, intervalHours: 24 })).status, 200);
+    assert.equal((await api('/api/management/magpie/upstream/settings', { enabled: true, autoBuild: true, intervalHours: 0 })).status, 400);
+    assert.deepEqual((await api('/api/management/magpie/upstream/logs')).body.logs, []);
+    const saved = await api('/api/management/magpie/provider', { id: 'open_router', enabled: true, apiKey: 'fixture-private-key', models: ['openrouter/free'] });
+    assert.equal(saved.status, 200);
+    const list = await api('/api/management/magpie/models');
+    assert.equal(list.status, 200);
+    assert.ok(list.body.catalog.some(row => row.id === 'api/open_router/openrouter/free'));
+    assert.ok(!JSON.stringify(list.body).includes('fixture-private-key'));
+    assert.ok(list.body.providers.find(row => row.id === 'open_router').configured);
+    await until(async () => (await runtime.command('models')).some(row => row.id === 'api/open_router/openrouter/free'));
+    const aggregateLoader = await plugin.auth.loader(async () => auth);
+    const result = await aggregateLoader.fetch(aggregateLoader.baseURL + '/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'api/open_router/openrouter/free', messages: [{ role: 'user', content: 'synthetic test' }], stream: false }) });
+    assert.equal(result.status, 200);
+    assert.equal((await result.json()).choices[0].message.content, 'managed-ok');
+    const freeList = await api('/api/management/magpie/discover', { id: 'open_router' });
+    assert.equal(freeList.status, 200);
+    assert.ok(freeList.body.models.includes('vendor/offer'));
+    assert.ok(!freeList.body.models.includes('vendor/paid'));
+    assert.equal(freeList.body.candidates.find(row => row.id === 'vendor/offer').kind, 'zero-price-offer');
+    assert.equal((await api('/api/management/magpie/provider', { id: 'open_router', enabled: true, models: ['vendor/offer'] })).status, 200);
+    await until(async () => (await runtime.command('models')).some(row => row.id === 'api/open_router/vendor/offer'));
+    const offerReply = await aggregateLoader.fetch(aggregateLoader.baseURL + '/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'api/open_router/vendor/offer', messages: [{ role: 'user', content: 'synthetic offer check' }], stream: false }) });
+    assert.equal(offerReply.status, 200); await offerReply.text();
+    const sent = requests.findLast(req => req.pathname.endsWith('/chat/completions') && req.body.model === 'vendor/offer');
+    assert.deepEqual(sent.body.provider.max_price, { prompt: 0, completion: 0, request: 0 });
+    assert.equal((await api('/api/management/magpie/provider', { id: 'open_router', enabled: true, models: ['vendor/paid'] })).status, 400);
+    assert.ok((await api('/api/management/magpie/models')).body.catalog.some(row => row.id === 'api/open_router/vendor/offer'));
+    const off = await api('/api/management/magpie/provider', { id: 'open_router', enabled: false, clearKey: true, models: ['openrouter/free'] });
+    assert.equal(off.status, 200);
+    assert.ok((await api('/api/management/magpie/models')).body.catalog.some(row => row.id === 'api/open_router/openrouter/free' && row.disabled));
+    assert.equal((await api('/api/management/magpie/provider', { id: 'gemini', enabled: true, apiKey: 'fixture-api-key', models: ['gemini-fixture'] })).status, 200);
+    await until(async () => (await runtime.command('models')).some(row => row.id === 'api/gemini/gemini-fixture'));
+    const gemini = await aggregateLoader.fetch(aggregateLoader.baseURL + '/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'api/gemini/gemini-fixture', messages: [{ role: 'user', content: 'synthetic test' }], stream: false }) });
+    assert.equal(gemini.status, 200);
+    assert.equal((await gemini.json()).choices[0].message.content, 'managed-ok');
+    await api('/api/management/magpie/provider', { id: 'gemini', enabled: false, clearKey: true, models: ['gemini-fixture'] });
+
   });
   let models;
   const provider = { models: {} };
@@ -258,6 +314,40 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
   const call = (model, extra = {}) => loader.fetch(`${loader.baseURL}/chat/completions`, { method: 'POST',
     headers: { authorization: 'Bearer downstream-secret', cookie: 'downstream-cookie' },
     body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], stream: true, ...extra }) });
+  await t.test('Agnes custom model is saved, visible before probing, and published after a real fixture completion', async () => {
+    const saved = await api('/api/management/magpie/provider', { id: 'agnes', enabled: true, apiKey: 'fixture-agnes-key', baseUrl: fixture + '/remote/api/v1', models: ['agnes-2.5-flash'] });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.body.models, ['api/agnes/agnes-2.5-flash']);
+    assert.ok((await api('/api/management/magpie/models')).body.catalog.some(row => row.id === 'api/agnes/agnes-2.5-flash'));
+    await until(async () => (await runtime.command('models')).some(row => row.id === 'api/agnes/agnes-2.5-flash'));
+    await until(async () => (await runtime.command('health'))['api/agnes/agnes-2.5-flash']?.state === 'healthy');
+    assert.ok(requests.some(row => row.pathname.endsWith('/chat/completions') && row.body.model === 'agnes-2.5-flash'));
+    await api('/api/management/magpie/provider', { id: 'agnes', enabled: false, models: ['agnes-2.5-flash'] });
+    assert.ok((await api('/api/management/magpie/models')).body.catalog.some(row => row.id === 'api/agnes/agnes-2.5-flash' && row.disabled));
+  });
+  await t.test('unified maintenance preserves a rate-limited model, supports strict hiding and blocks repeat calls', async () => {
+    const prior = (await api('/api/management/magpie/upstream/status')).body.preferences;
+    const id = 'api/agnes/fixture-rate-limit';
+    await api('/api/management/magpie/provider', { id: 'agnes', enabled: true, apiKey: 'fixture', baseUrl: fixture + '/remote/api/v1', models: ['fixture-rate-limit'] });
+    await until(async () => (await runtime.command('health'))[id]?.state === 'rate_limited');
+    assert.ok((await runtime.command('models')).some(row => row.id === id));
+    const count = () => requests.filter(row => row.body.model === 'fixture-rate-limit').length;
+    const before = count();
+    const saved = await api('/api/management/magpie/upstream/settings', { ...prior, enabled: false, hideUnavailable: false });
+    assert.equal(saved.status, 200);
+    const summary = (await api('/api/management/magpie/models')).body;
+    assert.equal(summary.healthPreferences.automatic, false);
+    assert.equal(summary.healthPreferences.hideUnavailable, false);
+    await runtime.command('models');
+    const limited = await call(id); assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) > 0); await limited.text();
+    await api('/api/management/magpie/probe', {});
+    assert.equal(count(), before);
+    await api('/api/management/magpie/upstream/settings', { ...prior, enabled: false, hideUnavailable: true });
+    assert.ok(!(await runtime.command('models')).some(row => row.id === id));
+    await api('/api/management/magpie/provider', { id: 'agnes', enabled: false, models: ['fixture-rate-limit'] });
+    await api('/api/management/magpie/upstream/settings', prior);
+  });
   await t.test('real channel inference retains tools and strips downstream secrets', async () => {
     const response = await call('buddy/fixture-free', { tools: [{ type: 'function', function: { name: 'lookup', parameters: {} } }] });
     assert.equal(response.status, 200);
@@ -360,13 +450,64 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     await runtime.close();
     assert.equal(fs.existsSync(path.join(dataDir, 'service.lock')), false);
   });
+  await t.test('disabled unified maintenance survives restart and suppresses legacy standalone background probing', async () => {
+    const conn = await runtime.connection();
+    const liveApi = async (suffix, body) => { const res = await fetch(conn.base.replace(/\/v1$/, '') + suffix, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${conn.key}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); assert.equal(res.status, 200); return { body: await res.json() }; };
+    const prior = (await liveApi('/api/management/magpie/upstream/status')).body.preferences;
+    await liveApi('/api/management/magpie/upstream/settings', { ...prior, enabled: false, hideUnavailable: false });
+    await liveApi('/api/management/settings', { streamRecovery: true });
+    await runtime.close();
+    const before = requests.filter(row => row.pathname.endsWith('/chat/completions')).length;
+    await runtime.ensure();
+    assert.ok((await runtime.command('models')).length > 0);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(requests.filter(row => row.pathname.endsWith('/chat/completions')).length, before);
+  });
+  await t.test('native settings and unified maintenance share probe switches, intervals and service pause', async () => {
+    const request = async (suffix, body) => { const current = await runtime.connection(); const r = await fetch(current.base.replace(/\/v1$/, '') + '/api/management/' + suffix, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${current.key}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); return { status: r.status, body: await r.json() }; };
+    const send = async (suffix, body) => { const r = await request(suffix, body); assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
+    await send('settings', { standaloneProbe: true, probeIntervalMinutes: 37 });
+    let state = await send('magpie/upstream/status');
+    assert.equal(state.preferences.enabled, true);
+    assert.equal(state.preferences.checkModels, true);
+    assert.equal(state.preferences.healthIntervalMinutes, 37);
+    await send('magpie/upstream/settings', { enabled: false, healthIntervalMinutes: 41 });
+    let summary = await send('summary');
+    assert.equal(summary.settings.standaloneProbe, false);
+    assert.equal(summary.settings.probeIntervalMinutes, 41);
+    // Saving an unrelated native setting must not discard the retained sub-option.
+    await send('settings', { streamRecovery: false, standaloneProbe: false });
+    state = await send('magpie/upstream/status');
+    assert.equal(state.preferences.checkModels, true);
+    await send('settings', { standaloneProbe: true });
+    await send('settings', { enabled: false });
+    assert.equal((await send('magpie/models')).healthPreferences.automatic, false);
+    assert.equal((await request('magpie/probe', {})).status, 503);
+    await send('settings', { enabled: true, standaloneProbe: false });
+    state = await send('magpie/upstream/status');
+    assert.equal(state.preferences.checkModels, false);
+    // The native probe button must publish the managed result, not a second
+    // legacy availability snapshot. Manual probing remains usable when auto is off.
+    const probed = await send('models/refresh', { probe: true });
+    const managed = await send('magpie/models');
+    assert.ok(Object.values(managed.health).some(row => row.state === 'healthy'));
+    for (const row of probed.catalog) {
+      if (managed.health[row.id]?.state === 'rate_limited') assert.equal(row.availability, 'throttled');
+      if (managed.health[row.id]?.state === 'healthy') assert.equal(row.availability, 'available');
+    }
+    summary = await send('summary');
+    assert.ok(summary.catalog.every(row => typeof row.healthState === 'string'));
+    await runtime.close(); await runtime.ensure();
+    assert.equal((await send('summary')).settings.standaloneProbe, false);
+    assert.equal((await send('magpie/upstream/status')).preferences.healthIntervalMinutes, 41);
+  });
   await t.test('uninstall disposes the live service and removes all registered plugin data', async () => {
     await runtime.ensure();
     const current = await runtime.connection();
     await plugin.lifecycle.dispose();
     await uninstall(input, { managed: options });
     assert.equal(fs.existsSync(dataDir), false);
-    assert.equal(fs.existsSync(path.join(dir, 'eac-failure-data')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'eac-failure-data')), false, fs.existsSync(path.join(dir, 'eac-failure-data')) ? JSON.stringify(fs.readdirSync(path.join(dir, 'eac-failure-data'))) : '');
     assert.equal(fs.existsSync(path.join(dir, 'our-free-model-owned.json')), false);
     assert.equal(fs.existsSync(path.join(eacSourceDir, 'src/vault.js')), true);
     await assert.rejects(runtime.ensure(), /卸载/);

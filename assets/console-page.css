@@ -1,0 +1,18 @@
+/* Layout only. Colors, surfaces, switches and controls use the upstream theme. */
+ofm-management { display: block; min-width: 0; }
+ofm-management [hidden] { display: none !important; }
+.ofm-managed-page .settings-card { margin-bottom: 20px; }
+.ofm-managed-page .settings-card-heading { margin-bottom: 16px; }
+.ofm-managed-page .ofm-field { display: grid; gap: 7px; margin: 16px 0; }
+.ofm-managed-page .ofm-field textarea { min-height: 130px; resize: vertical; }
+.ofm-managed-page .ofm-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.ofm-managed-page .ofm-copy { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.ofm-managed-page .ofm-log { max-height: 420px; overflow: auto; font-size: 12px; }
+.ofm-managed-page .ofm-table-wrap { overflow: auto; }
+.ofm-managed-page table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.ofm-managed-page th,.ofm-managed-page td { padding: 12px; text-align: left; border-bottom: 1px solid var(--line); }
+.ofm-managed-page td:first-child { min-width: 240px; overflow-wrap: anywhere; }
+.ofm-managed-page th { white-space: nowrap; }
+.ofm-managed-page .settings-number .ui-input { width: 96px; }
+.ofm-managed-page .ofm-status { min-height: 20px; margin: 12px 0; }
+@media (max-width: 640px) { .ofm-managed-page .dashboard-heading { flex-wrap: wrap; gap: 12px; } }

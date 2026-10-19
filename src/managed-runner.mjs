@@ -1,4 +1,10 @@
+import { closeManagedServices } from './graceful-stop.mjs';
 // Runs in Node, not in Magpie's Bun host. The upstream Worker needs Node APIs.
+import { inspectService, lockMessage } from './service-diagnostics.mjs';
+import { fileURLToPath } from 'node:url';
+import { createUpstreamUpdater } from './upstream-update.mjs';
+import { createModelHealth } from './model-health.mjs';
+import { createManagementExtension } from './management-extension.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -10,6 +16,10 @@ import { channelBusinessUrl } from './channel-source.mjs';
 import { createCloudflareConsole, remoteByDefault } from './cloudflare-console.mjs';
 
 let service;
+let health;
+let updater;
+const startupWarnings = [];
+const extension = createManagementExtension(() => health, () => startupWarnings, () => updater, () => runnerSettings?.dataDir, () => service && consoleHandoff && !stopped ? { protocol: 1, pid: process.pid, identity: runnerSettings.sharedIdentity } : undefined, executeCommand, applyMaintenance);
 let stopping;
 let stopped = false;
 let parentWatch;
@@ -23,10 +33,9 @@ const stop = () => {
   stopped = true;
   clearInterval(parentWatch);
   lines.close();
-  stopping = (async () => {
-    await remoteConsole?.close();
-    await Promise.all([service?.close(), consoleHandoff?.close()]);
-  })().finally(() => process.exit(0));
+  const deadline = setTimeout(() => process.exit(0), 4000);
+  deadline.unref();
+  stopping = closeManagedServices([updater, health, remoteConsole, service, consoleHandoff]).finally(() => process.exit(0));
   return stopping;
 };
 process.once('SIGINT', stop);
@@ -37,19 +46,15 @@ lines.once('line', async line => {
   try {
     const settings = JSON.parse(line);
     runnerSettings = settings;
-    const [eacSource, channelBusiness] = await Promise.all([loadEacSource(settings), channelBusinessUrl(settings)]);
-    const lock = path.join(settings.dataDir, 'service.lock');
-    // Recover only this service's dead-process lock, never a live or unknown lock.
-    if (fs.existsSync(lock)) {
-      const previous = JSON.parse(fs.readFileSync(lock, 'utf8'));
-      if (previous.product === 'our-free-model-standalone' && Number.isInteger(previous.pid) && previous.pid > 0) {
-        try { process.kill(previous.pid, 0); }
-        catch (error) { if (error.code === 'ESRCH') fs.unlinkSync(lock); }
-      }
-    }
+    const [eacSource, channelBusiness] = await Promise.all([loadEacSource(settings), channelBusinessUrl(settings, { onWarning: message => startupWarnings.push(message) })]);
     service = await startStandalone({ dataDir: settings.dataDir, port: settings.port,
-      channelBusiness, refresh: settings.refresh !== false, eacCredential: eacSource.credentialOf, eacSetup: eacSource.setup,
+      managementExtension: extension, channelBusiness, refresh: settings.refresh !== false, eacCredential: eacSource.credentialOf, eacSetup: eacSource.setup,
       logger: { info() {}, warn() {}, error() {} } });
+    health = createModelHealth(service, settings.health);
+    updater = createUpstreamUpdater({ project: fileURLToPath(new URL('../', import.meta.url)), dataDir: settings.dataDir });
+    await extension.initialize();
+    health.start();
+    if (!process.env.OFM_TEST_UPSTREAM && !process.env.OFM_UPDATE_TESTING) updater.start();
     consoleHandoff = await createConsoleHandoff(service, settings.consolePort);
     if (process.stdin.readableEnded) return stop();
     process.stdout.write(JSON.stringify({ type: 'ready', url: service.url,
@@ -62,17 +67,17 @@ lines.once('line', async line => {
   } catch (error) {
     await Promise.allSettled([service?.close(), consoleHandoff?.close()]);
     process.stdout.write(JSON.stringify({ type: 'error', message: error.code === 'EEXIST'
-      ? '数据目录已被另一个服务占用；关闭那个服务或使用另一个 managed.dataDir。'
+      ? lockMessage(await inspectService(runnerSettings?.dataDir ?? '.'))
       : `内置服务启动失败：${error.message}` }) + '\n');
     process.exit(1);
   }
 });
 lines.on('close', () => { if (started && service) void stop(); else if (!started) process.exit(0); });
-lines.on('line', async line => {
-  let command;
-  try { command = JSON.parse(line); } catch { return; }
-  if (!command.id || !service || stopping) return;
-  try {
+function applyMaintenance(prefs) {
+  health?.configure({ automatic: prefs.enabled && prefs.checkModels && service?.runtime.state().settings.enabled !== false, hideUnavailable: prefs.hideUnavailable, intervalMs: prefs.healthIntervalMinutes * 60000 });
+}
+async function executeCommand(command) {
+  if (!service || stopped) throw new Error('内置服务正在关闭');
     let value;
     if (command.type === 'console') {
       value = await (consoleRequests = consoleRequests.catch(() => {}).then(async () => {
@@ -105,11 +110,18 @@ lines.on('line', async line => {
           accounts.value.accounts.some(account => account.enabled !== false) &&
           models.value.models.some(row => row.id === id && !row.disabled && !row.dead);
       } else value = service.runtime.publicModelRows().some(row => row.id === model);
+      value = value && health.visible(model);
+      if (value && health.retryAfter(model)) value = { limited: true, retryAfter: health.retryAfter(model) };
     }
+    else if (command.type === 'observe') { health.reject(command.model, command.status, command.retryAfter); value = true; }
+    else if (command.type === 'health') { value = health.snapshot(); }
     else if (command.type === 'models') {
+      void health.schedule([], { automatic: true })?.catch(() => {});
+      const healthState = health.snapshot();
       const allowed = new Set(service.runtime.publicModelRows().map(row => row.id));
-      value = service.runtime.catalog.filter(row => allowed.has(row.id)).map(row => ({
-        id: row.id, name: row.name, vision: row.vision,
+      value = service.runtime.catalog.filter(row => allowed.has(row.id) && health.visible(row.id)).map(row => ({
+        tool_call: health.available(row.id) && healthState[row.id]?.tools === true, id: row.id, name: row.name,
+        health_label: ({ rate_limited: '暂时限流', denied: '授权被拒', unavailable: '暂时不可用' })[healthState[row.id]?.state], vision: row.vision,
         context_window: row.contextWindow ?? row.context_window,
         max_tokens: row.maxOutput ?? row.max_tokens,
         input: row.input,
@@ -117,6 +129,14 @@ lines.on('line', async line => {
         reasoning_efforts: row.reasoning && typeof row.reasoning === 'object' ? row.reasoning.efforts : effortsFor(row),
       }));
     } else throw new Error('Unknown managed command');
+    return value;
+}
+lines.on('line', async line => {
+  let command;
+  try { command = JSON.parse(line); } catch { return; }
+  if (!command.id || !service || stopping) return;
+  try {
+    const value = await executeCommand(command);
     process.stdout.write(JSON.stringify({ id: command.id, value }) + '\n');
   } catch (error) { process.stdout.write(JSON.stringify({ id: command.id,
     error: command.type === 'console' ? error.message : '内置服务无法执行管理请求' }) + '\n'); }

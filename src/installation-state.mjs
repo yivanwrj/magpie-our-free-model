@@ -10,7 +10,7 @@ const MARKER = '.magpie-ofm-owner.json';
 const LOCK = '.magpie-ofm-lifecycle.lock';
 const packageDir = fileURLToPath(new URL('../', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const files = ['settings.json', 'stats.json', 'availability.json', 'catalog.json',
+const files = ['updates', 'settings.json', 'stats.json', 'availability.json', 'catalog.json',
   'channel-credentials.json', 'eac-user.json', 'gemini-oauth.json', 'loomy-wechat.json', 'service.lock'];
 const runtimeName = name => /^(?:node-v\d+\.\d+\.\d+-[a-z0-9-]+|tailscale-\d+\.\d+\.\d+-[a-z0-9-]+|cloudflared-\d{4}\.\d+\.\d+-[a-z0-9-]+|(?:eac|channels)-[a-f0-9]{40}|\.(?:node|tailscale|eac|channels|cloudflared)-install-[a-zA-Z0-9]+)$/.test(name);
 
@@ -119,8 +119,8 @@ export async function registerInstallation(directory, dataDir) {
   });
 }
 
-export async function withInstallationLock(dataDir, work) {
-  return withFileLock(path.join(dataDir, LOCK), work);
+export async function withInstallationLock(dataDir, work, timeout) {
+  return withFileLock(path.join(dataDir, LOCK), work, timeout);
 }
 
 async function stopped(dataDir) {

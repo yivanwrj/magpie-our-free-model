@@ -1,3 +1,7 @@
+import { resolveHostRole, primaryRequired } from './host-role.mjs';
+import { findSharedService, sharedCommand } from './shared-service.mjs';
+import crypto from 'node:crypto';
+import { healthOptions } from './model-health.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,10 +23,11 @@ const environment = () => {
   return env;
 };
 
-export function getManagedRuntime(input = {}, options = {}) {
+export function getManagedRuntime(input = {}, options = {}, dependencies = {}) {
   const directory = input.directory || input.worktree || path.join(os.homedir(), '.config', 'magpie');
   const dataDir = path.resolve(options.dataDir || path.join(directory, 'our-free-model'));
   validateDataDir(dataDir, directory);
+  const health = healthOptions(options.health);
   const nodePath = options.nodePath;
   const port = options.port;
   if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) throw new Error('managed.port 必须为 0 到 65535 的整数');
@@ -39,12 +44,15 @@ export function getManagedRuntime(input = {}, options = {}) {
   if (!['auto', 'local', 'cloudflare'].includes(remote.consoleAccess)) throw new Error('managed.consoleAccess 必须为 auto、local 或 cloudflare');
   if (options.autoInstallCloudflared !== undefined && typeof options.autoInstallCloudflared !== 'boolean') throw new Error('managed.autoInstallCloudflared 必须为布尔值');
   if (remote.cloudflaredPath !== undefined && (typeof remote.cloudflaredPath !== 'string' || !remote.cloudflaredPath.trim())) throw new Error('managed.cloudflaredPath 必须为非空路径');
-  const identity = JSON.stringify([dataDir, nodePath, port, options.refresh !== false, eacSourceDir, autoInstallEac, autoInstallChannels, options.autoInstallNode !== false, consolePort, remote]);
+  const identity = JSON.stringify([dataDir, nodePath, port, options.refresh !== false, eacSourceDir, autoInstallEac, autoInstallChannels, options.autoInstallNode !== false, consolePort, remote, health]);
+  const sharedIdentity = crypto.createHash('sha256').update(JSON.stringify([identity, runner, JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version])).digest('hex');
   if (instances.has(dataDir)) {
     const entry = instances.get(dataDir);
     if (entry.identity !== identity) throw new Error('同一数据目录使用了不同服务设置；重启 Magpie 后再应用配置');
     return entry;
   }
+  let rolePromise;
+  const hostRole = () => rolePromise ??= (dependencies.resolveHostRole ?? resolveHostRole)();
   let child;
   let state;
   let pending;
@@ -63,9 +71,19 @@ export function getManagedRuntime(input = {}, options = {}) {
       if (state && child?.exitCode === null && !child.killed) return state;
       if (pending) return pending;
       pending = (async () => {
+        const role = await hostRole();
+        if (role === 'unknown') throw Object.assign(new Error('无法核对插件宿主类型，未自动启动 OFM；请确认系统允许读取父进程信息后重试。'), { code: 'OFM_HOST_UNVERIFIED' });
+        if (role === 'auxiliary') {
+          const existing = await findSharedService(dataDir, sharedIdentity);
+          if (!existing) { state = undefined; throw primaryRequired(); }
+          state = existing;
+          return state;
+        }
         await registerInstallation(directory, dataDir);
         return withInstallationLock(dataDir, async () => {
           if (disposed) throw new Error('本插件正在卸载，不能重新启动服务');
+          const existing = await findSharedService(dataDir, sharedIdentity);
+          if (existing) { state = existing; return state; }
           const resolvedNode = await resolveNodeRuntime(options, dataDir, environment());
           const processHandle = spawn(resolvedNode, [runner], { env: environment(), stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
           child = processHandle;
@@ -103,7 +121,7 @@ export function getManagedRuntime(input = {}, options = {}) {
                 }
               } catch { finish(new Error('内置服务返回了无效启动信息')); }
             });
-            processHandle.stdin.write(JSON.stringify({ dataDir, port, consolePort, ...remote, refresh: options.refresh !== false, eacSourceDir, autoInstallEac, autoInstallChannels, parentPid: process.pid }) + '\n');
+            processHandle.stdin.write(JSON.stringify({ dataDir, port, consolePort, health, ...remote, refresh: options.refresh !== false, eacSourceDir, autoInstallEac, autoInstallChannels, sharedIdentity, parentPid: process.pid }) + '\n');
           });
           state = ready;
           // Pipes carry ownership: host exit closes stdin and the child shuts down.
@@ -111,7 +129,7 @@ export function getManagedRuntime(input = {}, options = {}) {
           processHandle.stdin.unref?.();
           processHandle.stdout.unref?.();
           return state;
-        });
+        }, 55000);
       })().finally(() => { pending = undefined; });
       return pending;
     },
@@ -124,6 +142,7 @@ export function getManagedRuntime(input = {}, options = {}) {
     async command(type, payload = {}, signal) {
       await runtime.ensure();
       signal?.throwIfAborted();
+      if (state?.shared) return sharedCommand(state, type, payload, signal);
       const id = ++sequence;
       return new Promise((resolve, reject) => {
         const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); calls.delete(id); };
@@ -138,6 +157,7 @@ export function getManagedRuntime(input = {}, options = {}) {
       if (closing) return closing;
       closing = (async () => {
         if (pending) { try { await pending; } catch {} }
+        if (state?.shared) { state = undefined; return; }
         if (!child || child.exitCode !== null) return;
         const current = child;
         current.stdin.end();

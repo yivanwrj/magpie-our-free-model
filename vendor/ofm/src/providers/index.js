@@ -120,7 +120,7 @@ export function providerModelId(providerId, modelId) {
   const provider = typeof providerId === 'string' ? BY_ID.get(providerId.trim()) : undefined
   const model = typeof modelId === 'string' ? modelId.trim() : ''
   if (provider === undefined || model === '') return null
-  return `${provider.id}/${model}`
+  return `api/${provider.id}/${model}`
 }
 
 /**
@@ -132,7 +132,8 @@ export function providerModelId(providerId, modelId) {
  */
 export function parseProviderModelId(composite) {
   if (typeof composite !== 'string') return null
-  const text = composite.trim()
+  const raw = composite.trim()
+  const text = raw.startsWith('api/') ? raw.slice(4) : raw
   const slash = text.indexOf('/')
   if (slash <= 0) return null
   const providerId = text.slice(0, slash)

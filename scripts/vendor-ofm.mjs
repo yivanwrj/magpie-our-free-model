@@ -1,3 +1,6 @@
+import { omitRecommendedPage, omitSponsorPage, patchOpenRouterPriceCeiling } from './ofm-free-update-patch.mjs';
+import { patchManagementExtension } from './ofm-management-extension-patch.mjs';
+import { patchConsoleNavigation } from './ofm-console-integration-patch.mjs';
 // Copy a pinned upstream runtime without changing its authentication or business logic.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +11,7 @@ import { removeEmbeddedOAuthDefaults, externalizeEacCredentials } from './ofm-go
 import { patchChannelSource } from './ofm-channel-source-patch.mjs';
 import { patchEacDiagnostics, patchEacSetupUi } from './ofm-eac-setup-patch.mjs';
 
-const pin = '9e6121802ab5b87e379a07141e94e36482809147';
+const pin = '494a1d84e5401b54c4760e9da08f4221824f6d10';
 const root = path.resolve(process.argv[2] || '');
 if (!process.argv[2]) throw new Error('Usage: node scripts/vendor-ofm.mjs /path/to/upstream');
 if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() !== pin) throw new Error(`Expected upstream ${pin}`);
@@ -24,12 +27,12 @@ for (const dir of ['src', 'packages/standalone/channels', 'packages/standalone/w
     for (const entry of fs.readdirSync(path.join(root, base), { withFileTypes: true })) {
       const name = `${base}/${entry.name}`;
       if (entry.isDirectory()) walk(name);
-      else if (entry.isFile() && !name.includes('.test.') && !name.includes('/test/')) files.add(name);
+      else if (entry.isFile() && !name.includes('.test.') && !name.includes('/test/') && name !== 'src/picks.js') files.add(name);
     }
   };
   walk(dir);
 }
-for (const name of ['cli', 'service', 'management', 'login-terminal', 'eac']) files.add(`packages/standalone/${name}.mjs`);
+for (const name of ['cli', 'service', 'management', 'login-terminal', 'eac', 'open-external']) files.add(`packages/standalone/${name}.mjs`);
 const manifest = [];
 for (const name of [...files].sort()) {
   const source = path.join(root, name);
@@ -47,11 +50,16 @@ const digest = content => crypto.createHash('sha256').update(content).digest('he
 const channelPages = manifest.filter(row => /^packages\/standalone\/web\/channels-[^/]+\.js$/.test(row.path));
 if (!channelPages.length) throw new Error('Upstream channel UI bundle missing');
 for (const [file, patch, reason] of [
+  ...['packages/standalone/service.mjs', 'packages/standalone/management.mjs', 'src/providers/index.js', 'src/core/runtime.js'].map(file => [file, source => patchManagementExtension(file, source), 'Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates.']),
   ['packages/standalone/eac.mjs', patchEacDiagnostics, 'Expose safe EAC installation diagnostics.'],
+  ['src/aggregate.js', patchOpenRouterPriceCeiling, 'Enforce zero token/request pricing for OpenRouter free-only accounts.'],
+  ...channelPages.map(row => [row.path, omitRecommendedPage, 'Omit recommended-project navigation; outside requested update scope.']),
+  ...['packages/standalone/web/app.js', ...channelPages.map(row => row.path)].map(file => [file, source => omitSponsorPage(file, source), 'Omit sponsor navigation and daily-notice mounts under the local no-announcement policy.']),
+  ['packages/standalone/web/app.js', patchConsoleNavigation, 'Integrate channel and maintenance pages with the upstream sidebar, router and theme.'],
   ...channelPages.map(row => [row.path, patchEacSetupUi, 'Display safe EAC installation diagnostics.']),
   ...['packages/standalone/service.mjs', 'packages/standalone/channels/runtime.mjs', 'packages/standalone/channels/worker.mjs']
     .map(file => [file, source => patchChannelSource(file, source), 'Select verified unchanged upstream channel business in the Worker.'
-      + (file.endsWith('/worker.mjs') ? ' Accept harness messages/tools from the native Anthropic gateway; retain model enablement and effort/budget normalization.' : '')]),
+      + (file.endsWith('/worker.mjs') ? ' Retain upstream native Anthropic harness conversion and effort normalization.' : '')]),
 ]) {
   const target = path.join(dest, file);
   const updated = patch(fs.readFileSync(target, 'utf8'));

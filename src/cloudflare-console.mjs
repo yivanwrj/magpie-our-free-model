@@ -25,6 +25,8 @@ export function createCloudflareConsole(service, options, dataDir, dependencies 
   const launch = dependencies.spawn ?? spawn;
   const resolve = dependencies.resolve ?? resolveCloudflared;
   const makeGateway = dependencies.createGateway ?? createRemoteConsole;
+  const setExpiry = dependencies.setTimer ?? setTimeout;
+  const clearExpiry = dependencies.clearTimer ?? clearTimeout;
   let gateway, child, directory, expiry, opening, closing;
   let disposed = false;
   let publicOrigin, registered = false;
@@ -66,7 +68,7 @@ export function createCloudflareConsole(service, options, dataDir, dependencies 
           child.stdout.on('data', collect); child.stderr.on('data', collect); child.stdin.on('error', () => {});
           child.on('error', () => { child.failure = true; });
           child.once('close', () => { if (!disposed) void manager.close(); });
-          expiry = setTimeout(() => { void manager.close(); }, dependencies.sessionMs ?? 30 * 60_000); expiry.unref?.();
+          expiry = setExpiry(() => { void manager.close(); }, dependencies.sessionMs ?? 30 * 60_000); expiry.unref?.();
         }
         for (let i = 0; i < (dependencies.attempts ?? 180); i++) {
           checkOpen();
@@ -84,7 +86,7 @@ export function createCloudflareConsole(service, options, dataDir, dependencies 
     },
     close() {
       if (closing) return closing;
-      disposed = true; clearTimeout(expiry);
+      disposed = true; clearExpiry(expiry);
       closing = (async () => {
         await gateway?.close();
         if (alive()) await new Promise(resolve => {

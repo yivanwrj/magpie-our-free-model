@@ -1,5 +1,5 @@
 import { getManagedRuntime } from './managed-runtime.mjs';
-import { safeID, positive, fallback, chatRequest, forwardChat } from './transport.mjs';
+import { safeID, positive, chatRequest, forwardChat } from './transport.mjs';
 import { remoteByDefault } from './cloudflare-console.mjs';
 import fs from 'node:fs';
 
@@ -20,7 +20,7 @@ export function managedModel(row, base) {
     if (safeID(effort)) variants[effort] = { reasoningEffort: effort };
   }
   return {
-    id, providerID: PROVIDER, name: row.name ?? id,
+    id, providerID: PROVIDER, name: (row.name ?? id) + (row.health_label ? ` · ${row.health_label}` : ''),
     api: { id, url: base, npm: SDK },
     limit: { context: positive(row.context_window ?? row.context_length, 32768), output: positive(row.max_tokens, 4096) },
     capabilities: { temperature: true, reasoning: boolean(row.reasoning, efforts.length > 0),
@@ -34,7 +34,6 @@ export function managedModel(row, base) {
 export async function createManagedPlugin(input, options = {}) {
   if (options.consoleAccess === 'tailscale') options = { ...options, consoleAccess: 'cloudflare' };
   const runtime = getManagedRuntime(input, options);
-  let cache;
   const authorizeConsole = async access => {
     const result = await runtime.command('console', access ? { access } : {});
     const remote = typeof result === 'object';
@@ -49,7 +48,9 @@ export async function createManagedPlugin(input, options = {}) {
   };
   async function discover(auth, previous = {}, signal) {
     checkAuth(auth);
-    const conn = await runtime.connection();
+    let conn;
+    try { conn = await runtime.connection(); }
+    catch (error) { if (error.code === 'OFM_PRIMARY_REQUIRED') return {}; throw error; }
     try {
       const rows = await runtime.command('models');
       const models = {};
@@ -57,12 +58,11 @@ export async function createManagedPlugin(input, options = {}) {
         const model = managedModel(row, conn.base);
         if (model) models[model.id] = model;
       }
-      cache = models;
       return models;
     } catch (error) {
       signal?.throwIfAborted();
       if (error.signIn === 'expired') throw error;
-      return fallback(cache ?? previous);
+      return {}; // Health discovery fails closed; never republish stale models.
     }
   }
   return {
@@ -83,7 +83,9 @@ export async function createManagedPlugin(input, options = {}) {
         const auth = await getAuth();
         if (!auth) return {};
         checkAuth(auth);
-        const conn = await runtime.connection();
+        let conn;
+        try { conn = await runtime.connection(); }
+        catch (error) { if (error.code === 'OFM_PRIMARY_REQUIRED') return {}; throw error; }
         return { baseURL: conn.base, async fetch(input, init) {
           const currentAuth = await getAuth();
           checkAuth(currentAuth);
@@ -91,23 +93,27 @@ export async function createManagedPlugin(input, options = {}) {
           if (current.base !== conn.base) throw new Error('内置服务地址发生变化，请刷新或重载供应商');
           const { request, body } = await chatRequest(input, init, current.base);
           request.signal.throwIfAborted();
-          if (!await runtime.command('admit', { model: body.model }, request.signal)) {
-            return Response.json({ error: { type: 'invalid_request_error', message: '模型不存在、已停用或没有可用账号；请在控制台检查并刷新模型' } }, { status: 404 });
+          const admission = await runtime.command('admit', { model: body.model }, request.signal);
+          if (admission?.limited) return Response.json({ error: { type: 'rate_limit_error', message: '模型仍在限流等待期，保留列表但暂不重复请求上游，请按 Retry-After 等待。' } }, { status: 429, headers: { 'retry-after': String(admission.retryAfter) } });
+          if (!admission) {
+            return Response.json({ error: { type: 'invalid_request_error', message: '模型不存在、已停用、探测未通过或没有可用账号；请在控制台检查健康状态并刷新模型' } }, { status: 404 });
           }
           request.signal.throwIfAborted();
           // The service checks its live catalog on every request. Never let an
           // old Magpie cache re-enable a model disabled in the console.
-          return forwardChat(request, body, { key: current.key });
+          const response = await forwardChat(request, body, { key: current.key });
+          if (!response.ok) await runtime.command('observe', { model: body.model, status: response.status, retryAfter: response.headers.get('retry-after') }).catch(() => {});
+          return response;
         } };
       },
       async usage(auth) {
         checkAuth(auth);
-        await runtime.ensure();
+        try { await runtime.ensure(); } catch (error) { if (error.code !== 'OFM_PRIMARY_REQUIRED') throw error; return { plan: 'OFM 主服务未运行；图片 MCP 不会自动启动它，请在 Magpie 主程序中启用。', windows: [] }; }
         return { plan: 'Our Free Model 一体化；账号积分、用量、签到和请求日志见本机控制台', windows: [] };
       },
     },
     provider: { id: PROVIDER, async models(provider, { auth } = {}) {
-      if (!auth) return provider.models;
+      if (!auth) return {};
       return discover(auth, provider.models);
     } },
   };

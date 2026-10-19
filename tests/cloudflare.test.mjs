@@ -71,7 +71,7 @@ test('GitHub asset redirects must remain on official release-assets host', async
   assert.deepEqual(await fs.readdir(path.join(dir, 'runtime')), []);
 });
 
-async function fixture(t, { sessionMs, fail = false, registered = true } = {}) {
+async function fixture(t, { sessionMs, fail = false, registered = true, timers = {} } = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ofm-cf-manager-'));
   const log = path.join(dir, 'log.json'); const pidFile = path.join(dir, 'pid'); const script = path.join(dir, 'fixture.mjs');
   await fs.writeFile(script, `import fs from 'node:fs';
@@ -84,7 +84,7 @@ async function fixture(t, { sessionMs, fail = false, registered = true } = {}) {
   const binary = path.join(dir, 'cloudflared'); await fs.writeFile(binary, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(script)} "$@"\n`, { mode: 0o700 });
   let origin, closed = 0;
   const manager = createCloudflareConsole({}, {}, dir, { sessionMs, attempts: registered ? 100 : 20, pollMs: 10,
-    resolve: async () => binary, createGateway: async options => ({ target: 'http://127.0.0.1:32100',
+    ...timers, resolve: async () => binary, createGateway: async options => ({ target: 'http://127.0.0.1:32100',
       setOrigin: value => { origin = value; }, ticket: () => `${origin}/open/fixture`, close: async () => { closed++; } }) });
   t.after(async () => { await manager.close(); await fs.rm(dir, { recursive: true, force: true }); });
   return { dir, manager, log, pidFile, closed: () => closed };
@@ -116,8 +116,10 @@ test('Quick Tunnel failure and timeout close the gateway and temporary configura
 });
 
 test('Quick Tunnel expires without extending on repeated opens', { skip: process.platform === 'win32' }, async t => {
-  const f = await fixture(t, { sessionMs: 400 }); await f.manager.open(); await f.manager.open();
-  await until(() => f.manager.closed); await f.manager.close(); assert.equal(f.closed(), 1);
+  let expire, arms = 0;
+  const f = await fixture(t, { sessionMs: 400, timers: { setTimer(fn, ms) { assert.equal(ms, 400); arms++; expire = fn; return { unref() {} }; }, clearTimer() {} } });
+  await f.manager.open(); await f.manager.open(); assert.equal(arms, 1);
+  expire(); await f.manager.close(); assert.equal(f.manager.closed, true); assert.equal(f.closed(), 1);
 });
 
 test('closing during binary resolution cannot start a new tunnel', async () => {
