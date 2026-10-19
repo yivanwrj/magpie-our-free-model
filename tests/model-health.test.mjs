@@ -169,3 +169,20 @@ test('saving selected models with automation off probes only the selected models
   assert.deepEqual(f.requests.map(row => row.model), ['selected']);
   assert.equal(f.health.snapshot().unrelated, undefined);
 });
+
+test('health diagnoses refusal classes and never persists provider messages or secrets', async t => {
+  for (const [code, expected] of [['REGION_BLOCKED','region_blocked'], ['LANE_LOCKED','lane_locked'], ['AUTHORIZATION_REQUIRED','authorization_required'], ['INVALID_CREDENTIAL','forbidden']]) {
+    const f = await fixture(t, (_,res)=>{res.writeHead(403);res.end(JSON.stringify({error:{code,message:'PRIVATE_KEY_DO_NOT_STORE'}}));});
+    await f.health.schedule(); const state=f.health.snapshot().test;
+    assert.equal(state.state,expected); assert.doesNotMatch(JSON.stringify(state),/PRIVATE_KEY/);
+  }
+});
+test('bounded refusal parsing handles HTML, oversized bodies and inherited discriminator names', async () => {
+  const {healthFailure}=await import('../src/model-health.mjs');
+  for(const body of ['<html>Forbidden</html>', 'x'.repeat(20000),JSON.stringify({error:{code:'constructor'}})]) {
+    const value=await healthFailure(new Response(body,{status:403}));
+    assert.equal(value.state,'forbidden');
+  }
+  assert.equal((await healthFailure(Response.json({error:{type:'RegionError'}},{status:403}))).state,'region_blocked');
+  assert.equal((await healthFailure(Response.json({error:{}},{status:401}))).state,'unauthorized');
+});

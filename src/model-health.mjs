@@ -10,6 +10,47 @@ export function healthOptions(options = {}) {
   return out;
 }
 
+// Keep only known error discriminators; never persist upstream messages, bodies or keys.
+export async function healthFailure(response) {
+  const status = response.status;
+  let payload, reader;
+  try {
+    reader = response.body?.getReader();
+    const chunks = []; let size = 0;
+    if (reader) while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 16384) break;
+      chunks.push(Buffer.from(value));
+    }
+    if (size <= 16384) payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch { /* Unknown or non-JSON refusal: classify by status, not invented auth cause. */ }
+  finally { try { await reader?.cancel(); } catch {} }
+  const error = payload?.error ?? payload;
+  const allowed = {
+    REGION_BLOCKED: ['region_blocked', '地区或网络出口受限'],
+    RegionError: ['region_blocked', '地区或网络出口受限'],
+    LANE_LOCKED: ['lane_locked', '免费通道客户端限制'],
+    FreeTierError: ['lane_locked', '免费通道客户端限制'],
+    AUTHORIZATION_REQUIRED: ['authorization_required', '渠道需要授权'],
+    RATE_LIMIT: ['rate_limited', '受到限流'],
+    FreeUsageLimitError: ['rate_limited', '受到限流'],
+    QUOTA_EXHAUSTED: ['rate_limited', '额度耗尽'],
+  };
+  let kind;
+  for (const value of [error?.code, error?.type]) {
+    if (typeof value === 'string' && Object.hasOwn(allowed, value)) { kind = allowed[value]; break; }
+  }
+  // Older forwarding layers sometimes preserve only the known error name/text.
+  if (!kind && typeof error?.message === 'string') {
+    if (/FreeTierError|free tier can only be used from within/i.test(error.message)) kind = allowed.FreeTierError;
+    else if (/RegionError|not available in your country/i.test(error.message)) kind = allowed.RegionError;
+  }
+  if (!kind) kind = status === 429 ? ['rate_limited', '受到限流'] : status === 401 ? ['unauthorized', '凭据无效或已过期'] : status === 403 ? ['forbidden', '请求被拒绝，具体原因未确认'] : ['unavailable', '调用失败'];
+  return { state: kind[0], reason: `HTTP ${status} · ${kind[1]}` };
+}
+
 // Memory owns admission. Saved diagnostics are never trusted after a restart.
 export function createModelHealth(service, options, dependencies = {}) {
   let cfg = healthOptions(options);
@@ -32,8 +73,8 @@ export function createModelHealth(service, options, dependencies = {}) {
         const retry = response.headers.get('retry-after');
         const seconds = Number(retry);
         const after = retry ? (Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retry) - now()) : 0;
-        await response.body?.cancel();
-        throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status, after: Math.max(0, after || 0) });
+        const failure = await healthFailure(response);
+        throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status, after: Math.max(0, after || 0), failure });
       }
       const value = await response.json();
       if (value.error || !value.choices?.length) throw new Error('Invalid completion');
@@ -65,9 +106,9 @@ export function createModelHealth(service, options, dependencies = {}) {
     } catch (error) {
       if (version !== generation) return;
       const failures = (old?.failures ?? 0) + 1;
-      states.set(row.id, { state: error.status === 429 ? 'rate_limited' : [401, 403].includes(error.status) ? 'denied' : 'unavailable', tools: false,
+      states.set(row.id, { state: error.failure?.state ?? (error.status === 429 ? 'rate_limited' : 'unavailable'), tools: false,
         checkedAt: now(), nextAt: now() + Math.max(error.after ?? 0, Math.min(3600000, cfg.cooldownMs * 2 ** Math.min(failures - 1, 5))), failures,
-        reason: error.status ? `HTTP ${error.status}` : 'timeout_or_invalid_response' });
+        reason: error.failure?.reason ?? (error.status ? `HTTP ${error.status}` : 'timeout_or_invalid_response') });
     }
   }
   const api = {

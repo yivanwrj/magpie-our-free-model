@@ -32,7 +32,7 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
       const health = getHealth();
       if (!health) return {};
       const state = health.snapshot()[id];
-      return { routable: routable && health.visible(id), availability: state?.state === 'healthy' ? health.available(id) ? 'available' : 'unknown' : ({ rate_limited: 'throttled', denied: 'unavailable', unavailable: 'unavailable' })[state?.state] ?? 'unknown', healthState: state?.state ?? 'unknown', toolsVerified: state?.tools === true };
+      return { routable: routable && health.visible(id), availability: state?.state === 'healthy' ? health.available(id) ? 'available' : 'unknown' : ({ rate_limited: 'throttled', denied: 'unavailable', forbidden: 'unavailable', unauthorized: 'unavailable', region_blocked: 'unavailable', lane_locked: 'unavailable', authorization_required: 'unavailable', unavailable: 'unavailable' })[state?.state] ?? 'unknown', healthState: state?.state ?? 'unknown', toolsVerified: state?.tools === true };
     },
     async probe() {
       if (context?.stores.settings.get().enabled === false) throw Object.assign(new Error('推理服务已暂停，请先在服务设置中启用'), { statusCode: 503 });

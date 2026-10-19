@@ -37,7 +37,7 @@ async function refresh() {
   $('rows').replaceChildren();
   const prefix = `api/${$('source').value}/`;
   const catalog = [...data.catalog].sort((a, b) => Number(b.id.startsWith(prefix)) - Number(a.id.startsWith(prefix)));
-  const labels = { probing: '正在探测', healthy: '可用', rate_limited: '受到限流', denied: '授权被拒绝', unavailable: '调用失败' };
+  const labels = { probing: '正在探测', healthy: '可用', rate_limited: '受到限流', denied: '请求被拒绝（旧记录）', forbidden: '请求被拒绝', unauthorized: '凭据异常', region_blocked: '地区或出口受限', lane_locked: '免费通道受限', authorization_required: '渠道需要授权', unavailable: '调用失败' };
   for (const row of catalog) {
     const s = data.health[row.id];
     const tr = document.createElement('tr');
