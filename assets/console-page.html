@@ -10,30 +10,35 @@
         <label class="settings-field"><span><strong>删除已保存 Key</strong></span><input class="settings-toggle" role="switch" type="checkbox" id="clear"></label>
         <label class="ofm-field">模型 ID（每行一个）<textarea class="ui-input" id="models" rows="5" placeholder="openrouter/free"></textarea></label>
         <label class="ofm-field">自定义 API 地址（留空使用默认）<input class="ui-input" id="base" type="url" placeholder="https://…/v1"></label>
-        <div class="ofm-actions"><button class="ui-button ui-button-default" type="submit">保存并排队探测</button><button class="ui-button ui-button-outline" type="button" id="discover">获取候选目录（含免费模型）</button></div>
+        <div class="ofm-actions"><button class="ui-button ui-button-default" type="submit">保存渠道（使用时检查）</button><button class="ui-button ui-button-outline" type="button" id="discover">获取候选目录（含免费模型）</button></div>
       </form><p id="candidateInfo" class="ofm-copy" role="status"></p>
     </div>
-    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>已保存模型与健康状态</h2><p>与原生“模型清单 → 探测可用性”共用探测结果。默认保留暂时限流的模型。</p></div></div>
-      <div class="ofm-actions"><button class="ui-button ui-button-outline" id="probe" type="button">安排到期探测</button><button class="ui-button ui-button-outline" id="refresh" type="button">刷新状态</button></div>
-      <div class="ofm-table-wrap"><table><thead><tr><th>模型</th><th>来源</th><th>状态</th><th>工具调用</th><th>下次检查</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>已保存模型与健康状态</h2><p>启动、打开列表、保存配置和后台均不批量推理；实际使用时记录结果。手动检测只针对所选模型。</p></div></div>
+      <div class="ofm-actions"><select class="ui-input" id="probeModel" aria-label="手动检测模型"></select><button class="ui-button ui-button-outline" id="probe" type="button">检测所选一个模型</button><button class="ui-button ui-button-outline" id="refresh" type="button">刷新状态</button></div>
+      <div class="ofm-table-wrap"><table><thead><tr><th>模型</th><th>来源</th><th>状态</th><th>工具调用</th><th>状态有效期／冷却截止</th></tr></thead><tbody id="rows"></tbody></table></div>
     </div>
     <details class="ui-card settings-card"><summary>渠道包下载修复</summary><p>仅在原始业务包下载失败时使用。导入后重启 Magpie，账号数据保留。</p><a class="ui-button ui-button-outline" id="channelDownload" target="_blank" rel="noopener noreferrer">下载当前 business.mjs</a><label class="ofm-field">选择下载文件<input class="ui-input" id="channelFile" type="file" accept=".mjs,.js"></label><button class="ui-button ui-button-outline" id="importChannel" type="button">校验并安装渠道包</button><p id="importStatus" role="status"></p></details>
   </section>
   <section data-console-page="maintenance">
-    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>自动维护</h2><p>上游更新与模型健康共用总开关；关闭后仍可手动检查。</p></div></div>
-      <label class="settings-field"><span><strong>启用自动维护</strong><small>关闭后停止自动更新检查和自动健康探测。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateEnabled"></label>
+    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>自动维护</h2><p>后台只检查上游代码；模型健康通过实际调用记录，不发额外测试请求。</p></div></div>
+      <label class="settings-field"><span><strong>启用自动维护</strong><small>控制后台上游更新；不影响你主动发起的模型调用。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateEnabled"></label>
       <label class="settings-field"><span><strong>自动检查上游</strong><small>比较 OFM 和 Magpie 适配器提交。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="checkUpstream"></label>
       <label class="settings-field"><span><strong>发现更新后构建候选</strong><small>在独立目录合并、安全检查、测试和打包；敏感变更暂停，需人工复核。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateBuild"></label>
       <div class="settings-field settings-number-field"><label for="updateHours"><strong>上游检查间隔（小时）</strong><small>1–168 小时。</small></label><div class="settings-number"><input class="ui-input" id="updateHours" type="number" min="1" max="168" value="24"></div></div>
     </div>
-    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>模型健康</h2><p>与“服务设置 → 模型刷新”双向联动，不启动第二套探测。探测消耗上游额度，遇到 429 遵守冷却期。</p></div></div>
-      <label class="settings-field"><span><strong>自动探测可用性</strong><small>原生开关与此处为同一设置；暂停推理服务也会暂停自动健康探测。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="checkModels"></label>
-      <div class="settings-field settings-number-field"><label for="healthMinutes"><strong>模型刷新与健康检查间隔（分钟）</strong><small>与服务设置共用，1–1440 分钟。</small></label><div class="settings-number"><input class="ui-input" id="healthMinutes" type="number" min="1" max="1440" value="15"></div></div>
-      <label class="settings-field"><span><strong>严格隐藏异常模型</strong><small>默认关闭。启用后仅发布健康有效模型；原有分组和单模型隐藏设置仍然生效。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="hideUnavailable"></label>
+    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>按需调用与供应商内切换</h2><p>直接使用本轮真实请求，不预先发测试消息。只在 Our Free Model 内按你指定的备用顺序切换，不调用其他 Magpie 供应商。开始输出后不重放请求，成功后同一入口优先复用30分钟。</p></div></div>
+      <input id="checkModels" type="checkbox" hidden disabled>
+      <label class="settings-field"><span><strong>失败后使用免费备用模型</strong><small>备用列表只接受本OFM中启用的匿名与Kilo免费模型；不会自动使用付费或其他供应商模型。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="failoverEnabled"></label>
+      <div class="ofm-actions"><select class="ui-input" id="fallbackChoice" aria-label="添加免费备用模型"></select><button class="ui-button ui-button-outline" id="addFallback" type="button">加入备用顺序</button></div>
+      <label class="ofm-field">备用模型（每行一个ID，按行顺序尝试，可删除或调整顺序）<textarea class="ui-input" id="fallbackModels" rows="4"></textarea></label>
+      <label class="ofm-field">每轮最多尝试的模型数（含首选，1–5）<input class="ui-input" id="maxAttempts" type="number" min="1" max="5" value="3"></label>
+      <div class="settings-field settings-number-field"><label for="healthMinutes"><strong>成功状态有效期（分钟）</strong><small>到期只标记待更新，不自动发请求；失败冷却跨重启保留。</small></label><div class="settings-number"><input class="ui-input" id="healthMinutes" type="number" min="1" max="1440" value="15"></div></div>
+      <label class="settings-field"><span><strong>严格隐藏异常模型</strong><small>默认关闭，未调用过的模型仍可首次使用。已验证状态到期后请以实际调用为准。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="hideUnavailable"></label>
+      <p id="lastRoute" class="ofm-copy" role="status"></p>
     </div>
-    <div class="settings-footer"><span>保存后同步原生服务设置</span><div class="settings-actions"><button class="ui-button ui-button-default" id="saveUpdates" type="button">保存维护设置</button></div></div>
+    <div class="settings-footer"><span>保存后生效；旧自动探测设置会迁移为关闭</span><div class="settings-actions"><button class="ui-button ui-button-default" id="saveUpdates" type="button">保存维护设置</button></div></div>
     <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>检查与更新记录</h2><p>自动安装不会覆盖正在运行的插件。失败候选不可安装，账号与模型配置保留。每次合并检查新增外连、凭据访问与动态执行；静态检查不能保证无泄漏。</p></div></div>
-      <div class="ofm-actions"><button class="ui-button ui-button-outline" id="checkUpdates" type="button">立即检查所选项目</button><button class="ui-button ui-button-outline" id="buildUpdates" type="button">构建合并候选</button><button class="ui-button ui-button-ghost" id="showUpdateLogs" type="button">查看构建日志</button><button class="ui-button ui-button-ghost" id="cleanUpdates" type="button">清理历史更新缓存</button><a class="ui-button ui-button-default" id="downloadUpdate" href="/api/management/magpie/upstream/download" hidden>下载已验证候选包</a></div>
+      <div class="ofm-actions"><button class="ui-button ui-button-outline" id="checkUpdates" type="button">立即检查上游</button><button class="ui-button ui-button-outline" id="buildUpdates" type="button">构建合并候选</button><button class="ui-button ui-button-ghost" id="showUpdateLogs" type="button">查看构建日志</button><button class="ui-button ui-button-ghost" id="cleanUpdates" type="button">清理历史更新缓存</button><a class="ui-button ui-button-default" id="downloadUpdate" href="/api/management/magpie/upstream/download" hidden>下载已验证候选包</a></div>
       <p id="cleanupStatus" role="status"></p><pre class="ofm-copy ofm-log" id="updateStatus" role="status"></pre>
     </div>
   </section>

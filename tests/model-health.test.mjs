@@ -24,7 +24,7 @@ async function fixture(t, handler, options = {}) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const service = { keyFile, url: `http://127.0.0.1:${server.address().port}`, ready: Promise.resolve(), runtime: { publicModelRows: () => rows } };
-  const health = createModelHealth(service, { intervalMs: 1000, cooldownMs: 1000, timeoutMs: 500, tools: false, ...options }, { now: () => now });
+  const health = createModelHealth(service, { intervalMs: 1000, cooldownMs: 1000, timeoutMs: 500, tools: false, automatic: true, onDemand: false, ...options }, { now: () => now });
   t.after(async () => { await health.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true }); });
   return { health, requests, setRows(value) { rows = value; }, advance(ms) { now += ms; }, peak: () => peak };
 }

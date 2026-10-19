@@ -503,8 +503,8 @@
     {
       "path": "packages/standalone/service.mjs",
       "originalSha256": "a1a90b952bb4d3d09fb35665f3a1c5acdd2983bb44618883e3859e969bcbf866",
-      "sha256": "e4998390f3b85776d4a05db6cd04cb12e068eecdd7f439814d31a36ecd594bc0",
-      "reason": "Accept an original EAC credential function and safe setup diagnostics; preserve server authorization and login flow. Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates. Bind the session map after acquiring the service data directory. Select verified unchanged upstream channel business in the Worker."
+      "sha256": "f05203aeac564fb6cac549b526f566ef13718c135203bb81146d49294d6641f7",
+      "reason": "Accept an original EAC credential function and safe setup diagnostics; preserve server authorization and login flow. Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates. Bind the session map after acquiring the service data directory. Select verified unchanged upstream channel business in the Worker. Observe actual completions and scoped on-demand failover through the authenticated management extension."
     },
     {
       "path": "packages/standalone/management.mjs",
@@ -521,8 +521,8 @@
     {
       "path": "src/core/runtime.js",
       "originalSha256": "4ca75fab67217753b497d121ca72fb2f9a07ba225e0fcf489f173adac3ae123e",
-      "sha256": "3f3940c73fefd938d80ab8f7f6ebc541af4b8478b434fb38466b8a0167ab26b8",
-      "reason": "Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates."
+      "sha256": "4b5029439269e4221ba9c59422a1703b1f3498148a2cf95fb1714ed758b3199c",
+      "reason": "Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates. Managed on-demand mode disables legacy bulk inference probes, including region/egress-triggered rounds."
     },
     {
       "path": "packages/standalone/eac.mjs",
@@ -569,8 +569,8 @@
     {
       "path": "packages/standalone/channels/runtime.mjs",
       "originalSha256": "58b21b7b21780c3450d4181d78f4dede141e45d236f4efce6a772a11f9bd71fd",
-      "sha256": "2e210442418f1784bf5229f4d314842e62be77685a72f3e5af71d427ad755ad7",
-      "reason": "Select verified unchanged upstream channel business in the Worker."
+      "sha256": "ef29c563037ff5fe854e4067d199c201304a953164905f73b0e35d7345c0e2a8",
+      "reason": "Select verified unchanged upstream channel business in the Worker. Refresh the local channel catalog after model enable/disable writes before admitting a new turn."
     },
     {
       "path": "packages/standalone/channels/worker.mjs",

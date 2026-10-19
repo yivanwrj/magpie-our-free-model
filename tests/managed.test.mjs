@@ -92,6 +92,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-managed-'));
   const dataDir = path.join(dir, 'data');
   const requests = [];
+  let rejectAnonymous=false;
   const upstream = createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -99,6 +100,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     const body = raw ? JSON.parse(raw) : {};
     requests.push({ pathname, body, headers: req.headers });
     const json = value => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(value)); };
+    if(rejectAnonymous&&body.model==='mimo-v2.6-flash-free'){res.statusCode=403;return json({error:{type:'FreeTierError',message:'free tier can only be used from within OpenCode'}});}
     if (body.model === 'fixture-rate-limit') { res.writeHead(429, { 'retry-after': '30' }); return res.end('{}'); }
     if (req.headers['x-ofm-signature']) {
       const expected = crypto.createHmac('sha256', 'fixture-only-not-a-production-secret')
@@ -120,7 +122,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
       { id: 'vendor/paid', pricing: { prompt: '0.01', completion: '0.01' } },
     ] });
     if (pathname.endsWith('/models')) return json({ data: req.headers['x-ofm-signature']
-      ? [{ id: 'fixture-eac-model' }, { id: 'opencode/deepseek-v4-flash' }] : pathname === '/models' ? [{ id: 'fixture/free', isFree: true }]
+      ? [{ id: 'fixture-eac-model' }, { id: 'opencode/deepseek-v4-flash' }] : pathname === '/models' ? [{ id: 'fixture/free', isFree: true, context_length:1048576 }]
       : [{ id: 'mimo-v2.6-flash-free' }] });
     if (pathname.includes('/console/enterprises/') || pathname.endsWith('/v3/config')) return json({ data: {
       models: [{ id: 'fixture-free', name: 'Fixture', credits: 'x0', maxInputTokens: 128000,
@@ -194,6 +196,8 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
   assert.equal(auth.key, 'managed');
   const firstModels = await plugin.provider.models({ models: {} }, { auth });
   assert.ok(firstModels['buddy/fixture-free'], 'the first discovery waits for the account catalog');
+  await runtime.command('models');
+  assert.equal(requests.filter(row=>row.pathname.endsWith('/chat/completions')).length,0,'starting and listing the real service must not probe any model');
   assert.ok(!login.url.includes('ofm-'));
   assert.equal(new URL(login.url).port, String(consolePort));
   const conn = await runtime.connection();
@@ -317,11 +321,14 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     headers: { authorization: 'Bearer downstream-secret', cookie: 'downstream-cookie' },
     body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], stream: true, ...extra }) });
   await t.test('Agnes custom model is saved, visible before probing, and published after a real fixture completion', async () => {
+    const beforeInference=requests.filter(row=>row.pathname.endsWith('/chat/completions')).length;
     const saved = await api('/api/management/magpie/provider', { id: 'agnes', enabled: true, apiKey: 'fixture-agnes-key', baseUrl: fixture + '/remote/api/v1', models: ['agnes-2.5-flash'] });
     assert.equal(saved.status, 200);
     assert.deepEqual(saved.body.models, ['api/agnes/agnes-2.5-flash']);
     assert.ok((await api('/api/management/magpie/models')).body.catalog.some(row => row.id === 'api/agnes/agnes-2.5-flash'));
     await until(async () => (await runtime.command('models')).some(row => row.id === 'api/agnes/agnes-2.5-flash'));
+    assert.equal(requests.filter(row=>row.pathname.endsWith('/chat/completions')).length,beforeInference,'saving and reading models must send no inference');
+    const actual=await call('api/agnes/agnes-2.5-flash');assert.equal(actual.status,200);await actual.text();
     await until(async () => (await runtime.command('health'))['api/agnes/agnes-2.5-flash']?.state === 'healthy');
     assert.ok(requests.some(row => row.pathname.endsWith('/chat/completions') && row.body.model === 'agnes-2.5-flash'));
     await api('/api/management/magpie/provider', { id: 'agnes', enabled: false, models: ['agnes-2.5-flash'] });
@@ -331,6 +338,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     const prior = (await api('/api/management/magpie/upstream/status')).body.preferences;
     const id = 'api/agnes/fixture-rate-limit';
     await api('/api/management/magpie/provider', { id: 'agnes', enabled: true, apiKey: 'fixture', baseUrl: fixture + '/remote/api/v1', models: ['fixture-rate-limit'] });
+    const actual=await call(id);assert.equal(actual.status,429);await actual.text();
     await until(async () => (await runtime.command('health'))[id]?.state === 'rate_limited');
     assert.ok((await runtime.command('models')).some(row => row.id === id));
     const count = () => requests.filter(row => row.body.model === 'fixture-rate-limit').length;
@@ -343,7 +351,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     await runtime.command('models');
     const limited = await call(id); assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get('retry-after')) > 0); await limited.text();
-    await api('/api/management/magpie/probe', {});
+    await api('/api/management/magpie/probe', {model:id});
     assert.equal(count(), before);
     await api('/api/management/magpie/upstream/settings', { ...prior, enabled: false, hideUnavailable: true });
     assert.ok(!(await runtime.command('models')).some(row => row.id === id));
@@ -477,7 +485,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     await send('settings', { standaloneProbe: true, probeIntervalMinutes: 37 });
     let state = await send('magpie/upstream/status');
     assert.equal(state.preferences.enabled, true);
-    assert.equal(state.preferences.checkModels, true);
+    assert.equal(state.preferences.checkModels, false);
     assert.equal(state.preferences.healthIntervalMinutes, 37);
     await send('magpie/upstream/settings', { enabled: false, healthIntervalMinutes: 41 });
     let summary = await send('summary');
@@ -486,7 +494,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     // Saving an unrelated native setting must not discard the retained sub-option.
     await send('settings', { streamRecovery: false, standaloneProbe: false });
     state = await send('magpie/upstream/status');
-    assert.equal(state.preferences.checkModels, true);
+    assert.equal(state.preferences.checkModels, false);
     await send('settings', { standaloneProbe: true });
     await send('settings', { enabled: false });
     assert.equal((await send('magpie/models')).healthPreferences.automatic, false);
@@ -496,7 +504,10 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     assert.equal(state.preferences.checkModels, false);
     // The native probe button must publish the managed result, not a second
     // legacy availability snapshot. Manual probing remains usable when auto is off.
-    const probed = await send('models/refresh', { probe: true });
+    assert.equal((await request('models/refresh',{probe:true})).status,400,'implicit bulk inference is rejected');
+    const selected=await request('magpie/probe',{model:'buddy/fixture-free'});assert.equal(selected.status,202);
+    await until(async()=>(await runtime.command('health'))['buddy/fixture-free']?.state==='healthy');
+    const probed = await send('models/refresh', { probe: false });
     const managed = await send('magpie/models');
     assert.ok(Object.values(managed.health).some(row => row.state === 'healthy'));
     for (const row of probed.catalog) {
@@ -508,6 +519,23 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     await runtime.close(); await runtime.ensure();
     assert.equal((await send('summary')).settings.standaloneProbe, false);
     assert.equal((await send('magpie/upstream/status')).preferences.healthIntervalMinutes, 41);
+  });
+  await t.test('real OFM gateway fails over only to configured free OFM model and then reuses it without probes', async()=>{
+    const current=await runtime.connection();
+    const apiNow=async(suffix,body)=>{const response=await fetch(current.base.replace(/\/v1$/,'')+'/api/management/magpie/'+suffix,{method:body?'POST':'GET',headers:{authorization:`Bearer ${current.key}`,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:response.status,body:await response.json()};};
+    const saved=await apiNow('upstream/settings',{failoverEnabled:true,fallbackModels:['fixture/free'],maxAttempts:3,hideUnavailable:false});assert.equal(saved.status,200,JSON.stringify(saved));
+    assert.equal((await apiNow('upstream/settings',{fallbackModels:['api/open_router/openrouter/free']})).status,400,'no unverified/paid aggregate fallback');
+    const liveLoader=await plugin.auth.loader(async()=>auth);
+    const liveCall=model=>liveLoader.fetch(`${current.base}/chat/completions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:'hi'}],stream:true})});
+    rejectAnonymous=true;
+    try {
+      const before=requests.filter(row=>row.pathname.endsWith('/chat/completions')).length;
+      const response=await liveCall('mimo-v2.6-flash-free');assert.equal(response.status,200);assert.match(await response.text(),/managed-ok/);
+      const summary=await apiNow('models');assert.equal(summary.body.lastRoute.served,'fixture/free');assert.equal(summary.body.lastRoute.attempts,2);
+      const sent=requests.slice().filter(row=>row.pathname.endsWith('/chat/completions')).slice(before);assert.deepEqual(sent.map(row=>row.body.model),['mimo-v2.6-flash-free','fixture/free']);
+      const next=await liveCall('mimo-v2.6-flash-free');assert.equal(next.status,200);await next.text();
+      const last=await apiNow('models');assert.equal(last.body.lastRoute.served,'fixture/free');assert.equal(last.body.lastRoute.attempts,1);
+    } finally {rejectAnonymous=false;}
   });
   await t.test('uninstall disposes the live service and removes all registered plugin data', async () => {
     await runtime.ensure();

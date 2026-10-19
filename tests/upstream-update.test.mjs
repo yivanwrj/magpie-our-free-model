@@ -22,7 +22,7 @@ async function fixture(t) {
   await write(original, 'payload.js', 'export const source = "new";\n'); git(original, 'add', '.'); git(original, 'commit', '-m', 'new'); const ofmLatest = git(original, 'rev-parse', 'HEAD');
   const policy = { schema: 1, adapter: { repository: 'mu-zi-lee/magpie-our-free-model', branch: 'main', commit: adapterBase }, ofm: { repository: 'Ebony-Vinyl/dsh-our-free-model', branch: 'main' }, preserve: ['src/local-adaptation.mjs'] };
   await write(project, 'UPSTREAM_POLICY.json', JSON.stringify(policy));
-  await write(project, 'package.json', JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', files: ['src', 'scripts', 'tests', 'vendor', 'UPSTREAM_POLICY.json', 'README.md', 'NOTICE.md', 'UPSTREAM_SYNC.md'] }));
+  await write(project, 'package.json', JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', files: ['src', 'scripts', 'tests', 'vendor', 'UPSTREAM_POLICY.json', 'README.md', 'NOTICE.md', 'update.md'] }));
   await write(project, 'src/local-adaptation.mjs', 'export const value = "local customization";\n');
   for (const kind of ['channel', 'eac']) await write(project, `src/${kind}-source.mjs`, `export const ${kind === 'channel' ? 'CHANNEL' : 'EAC'}_COMMIT = '${ofmBase}';\nexport const FILES = [{ path: 'payload.js', bytes: 27, sha256: '${'0'.repeat(64)}' }];\n`);
   await write(project, 'vendor/ofm/UPSTREAM.json', JSON.stringify({ commit: ofmBase, files: [], adaptations: [], omitted: [] }));
@@ -33,7 +33,7 @@ async function fixture(t) {
 const pin = '${ofmBase}';
 const root=process.argv[2]; if(execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim()!==pin) throw new Error('pin');
 const bytes=fs.readFileSync(root+'/payload.js'); fs.mkdirSync('vendor/ofm',{recursive:true}); fs.writeFileSync('vendor/ofm/runtime.js',bytes); fs.writeFileSync('vendor/ofm/UPSTREAM.json',JSON.stringify({commit:pin,files:[{path:'runtime.js',sha256:crypto.createHash('sha256').update(bytes).digest('hex')}],adaptations:[],omitted:[]}));`);
-  for (const name of ['README.md', 'UPSTREAM_SYNC.md']) await write(project, name, 'fixture\n');
+  for (const name of ['README.md', 'update.md']) await write(project, name, 'fixture\n');
   await write(project, 'NOTICE.md', `Pinned commit: ${ofmBase}\nOriginal author attribution\n`);
   const sources = { adapter: { repository: policy.adapter.repository, current: adapterBase, latest: adapterBase, changed: false }, ofm: { repository: policy.ofm.repository, current: ofmBase, latest: ofmLatest, changed: true } };
   return { root, project, dataDir, adapter, original, adapterBase, sources, deps: { repositories: { adapter, ofm: original } }, args: () => ({ project, workDir: path.join(root, 'work'), sources }) };
@@ -64,6 +64,8 @@ test('automatic candidate merges compatible adapter changes, vendors new core an
   for (const name of ['ofm-source', 'home', 'tmp', 'distribution']) await assert.rejects(fs.access(path.join(result.buildDir, name)));
   await fs.access(result.archive);
   assert.equal(result.tested, true); assert.equal(result.version, '1.0.1');
+  assert.match(await fs.readFile(path.join(result.projectDir,'update.md'),'utf8'),/## 1\.0\.1 — 上游自动合并候选/);
+  for(const name of ['UPSTREAM_SYNC.md','TEST_RESULTS.txt'])await assert.rejects(fs.access(path.join(result.projectDir,name)));
   assert.ok((await fs.stat(result.archive)).size > 0);
   assert.match(await fs.readFile(path.join(result.projectDir, 'src/local-adaptation.mjs'), 'utf8'), /local customization/);
   assert.equal(await fs.readFile(path.join(result.projectDir, 'src/upstream-addition.mjs'), 'utf8'), 'export const upstream = true;');

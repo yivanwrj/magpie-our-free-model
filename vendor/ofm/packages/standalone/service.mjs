@@ -258,7 +258,7 @@ export async function startStandalone({
       get catalog() { return [...core.catalog, ...channels.publicModelRows().map(row => ({ ...row, contextWindow: row.context_window, maxOutput: row.max_tokens }))] },
       state: () => ({ ...core.state(), catalog: [...core.catalog, ...channels.publicModelRows()] }),
       publicModelRows: () => [...core.publicModelRows(), ...channels.publicModelRows()],
-      complete: (request, onChunk) => channels.handles(request.model) ? channels.complete(request, onChunk) : core.complete(request, onChunk),
+      complete: (request, onChunk) => managementExtension?.complete ? managementExtension.complete(request, onChunk, (next, emit) => channels.handles(next.model) ? channels.complete(next, emit) : core.complete(next, emit), runtime) : channels.handles(request.model) ? channels.complete(request, onChunk) : core.complete(request, onChunk),
       async refreshCatalog(options) {
         if (stopped) return
         await Promise.all([core.refreshCatalog(options), channels.refresh().catch(error => { if (!stopped) throw error })])

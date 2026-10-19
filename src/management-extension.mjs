@@ -1,3 +1,4 @@
+import { completeOnDemand, freeFallback } from './on-demand.mjs';
 import { CHANNEL_COMMIT, CHANNEL_FILES, channelDownloadUrl, importChannelBundle } from './channel-source.mjs';
 import fs from 'node:fs';
 import { discoverOpenRouterFree } from './openrouter-free.mjs';
@@ -7,9 +8,9 @@ import { baseURL } from './transport.mjs';
 
 export function createManagementExtension(getHealth, getWarnings = () => [], getUpdater = () => undefined, getDataDir = () => undefined, getRuntime = () => undefined, executeCommand = async () => { throw new Error('共享服务尚未就绪'); }, onMaintenance = () => {}) {
   const asset = (name, type) => ({ type, body: fs.readFileSync(new URL(`../assets/${name}`, import.meta.url)) });
-  let context;
+  let context, lastRoute;
   const projectSettings = preferences => {
-    context?.persist({ standaloneProbe: preferences.enabled && preferences.checkModels, probeIntervalMinutes: preferences.healthIntervalMinutes });
+    context?.persist({ standaloneProbe: false, probeIntervalMinutes: preferences.healthIntervalMinutes });
     onMaintenance(preferences);
   };
   return {
@@ -34,9 +35,15 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
       const state = health.snapshot()[id];
       return { routable: routable && health.visible(id), availability: state?.state === 'healthy' ? health.available(id) ? 'available' : 'unknown' : ({ rate_limited: 'throttled', denied: 'unavailable', forbidden: 'unavailable', unauthorized: 'unavailable', region_blocked: 'unavailable', lane_locked: 'unavailable', authorization_required: 'unavailable', unavailable: 'unavailable' })[state?.state] ?? 'unknown', healthState: state?.state ?? 'unknown', toolsVerified: state?.tools === true };
     },
+    async complete(request,onChunk,complete,runtime){
+      const preferences=(await getUpdater().status()).preferences;
+      const health=getHealth();
+      if(!health)return complete(request,onChunk);
+      return completeOnDemand({request,onChunk,complete,catalog:runtime.catalog,publicRows:runtime.publicModelRows(),preferences,health,recordRoute:row=>{lastRoute=row;}});
+    },
     async probe() {
       if (context?.stores.settings.get().enabled === false) throw Object.assign(new Error('推理服务已暂停，请先在服务设置中启用'), { statusCode: 503 });
-      await getHealth()?.schedule();
+      throw Object.assign(new Error('已改为按需调用；请在渠道与模型选择单个模型手动检测'),{statusCode:400});
     },
     assets: new Map([
       ['/magpie-models', asset('models.html', 'text/html; charset=utf-8')],
@@ -83,6 +90,10 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
         else if (req.method === 'GET' && route === 'upstream/status') json(res, 200, await updater.status());
         else if (req.method === 'POST' && route === 'upstream/settings') {
           const options = await readBody(req);
+          if(options.fallbackModels!==undefined){
+            const live=new Set(runtime.publicModelRows().map(row=>row.id));
+            if(!Array.isArray(options.fallbackModels)||options.fallbackModels.some(id=>!live.has(id)||!freeFallback(runtime.catalog.find(row=>row.id===id))))fail('备用模型必须是当前OFM已启用的匿名或Kilo免费模型');
+          }
           try { const updated = await updater.configure(options); projectSettings(updated.preferences); await context?.onSettingsChanged?.(); json(res, 200, updated); } catch (error) { fail(error.message); }
         }
         else if (req.method === 'POST' && ['upstream/check', 'upstream/build'].includes(route)) {
@@ -108,6 +119,7 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
           }
         }
         json(res, 200, {
+          lastRoute, fallbackChoices: runtime.catalog.filter(freeFallback).filter(row=>runtime.publicModelRows().some(live=>live.id===row.id)).map(row=>({id:row.id,name:row.name})),
           startupWarnings: getWarnings(),
           channelSource: { commit: CHANNEL_COMMIT, downloadUrl: channelDownloadUrl() },
           health: getHealth()?.snapshot() ?? {},
@@ -149,8 +161,8 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
         getHealth()?.invalidate(`api/${provider.id}/`);
         runtime.syncAggregateCatalog();
         const modelIds = setting.enabled ? setting.models.map(id => `api/${provider.id}/${id}`) : [];
-        const probeQueued = modelIds.length > 0 && stores.settings.get().enabled !== false;
-        if (probeQueued) void getHealth()?.schedule(modelIds)?.catch(() => {});
+        const probeQueued = false; // Saving configuration never sends inference.
+
         json(res, 200, { ok: true, enabled: setting.enabled, models: modelIds, probeQueued });
       } else if (req.method === 'POST' && route === 'discover') {
         const body = await readBody(req);
@@ -166,10 +178,11 @@ export function createManagementExtension(getHealth, getWarnings = () => [], get
           json(res, 200, { models: ids.slice(0, 100), message: '仅为候选目录，保存后仍需实际探测；此渠道不推断免费额度' });
         }
       } else if (req.method === 'POST' && route === 'probe') {
-        await readBody(req);
+        const selected = await readBody(req);
         if (stores.settings.get().enabled === false) { json(res, 503, { error: '推理服务已暂停，请先在服务设置中启用' }); return true; }
-        void getHealth()?.schedule()?.catch(() => {});
-        json(res, 202, { ok: true, message: '已安排探测；仍在冷却的模型将在到期后重试' });
+        if(typeof selected.model!=='string'||!runtime.publicModelRows().some(row=>row.id===selected.model))fail('请选择当前已启用的单个模型');
+        void getHealth()?.schedule([selected.model])?.catch(() => {});
+        json(res, 202, {ok:true,message:'仅安排所选模型检测；冷却未到期不会重试，不会切换备用模型'});
       } else { json(res, 404, { error: '接口不存在' }); }
       return true;
     },

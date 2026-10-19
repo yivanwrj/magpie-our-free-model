@@ -67,4 +67,4 @@ Tailscale 运行集成和下载器已移除；卸载清理仅保留旧缓存的�
 
 ## Community fixes adapted in 0.14.1
 
-Reasoning-menu, readiness/session-store and stream-diagnostic ideas were adapted from mu-zi-lee/magpie-our-free-model PR #5 by 1007cordon-ux (d544400ba4ed816df4798804d401d93eb3bbfc2e) and PR #7 by Gyarados4157 (1a7f00bd7d3083f6a014fdb2162a34dd38bc6269), under the repository MIT license. See COMMUNITY_REVIEW_ZH.md for scope and additional validation.
+Reasoning-menu, readiness/session-store and stream-diagnostic ideas were adapted from mu-zi-lee/magpie-our-free-model PR #5 by 1007cordon-ux (d544400ba4ed816df4798804d401d93eb3bbfc2e) and PR #7 by Gyarados4157 (1a7f00bd7d3083f6a014fdb2162a34dd38bc6269), under the repository MIT license. See update.md (0.14.1) for scope and validation history.

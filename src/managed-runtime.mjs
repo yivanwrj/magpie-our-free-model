@@ -68,8 +68,10 @@ export function getManagedRuntime(input = {}, options = {}, dependencies = {}) {
         await closing; closing = undefined;
         if (disposed) throw new Error('本插件正在卸载，不能重新启动服务');
       }
-      if (state && child?.exitCode === null && !child.killed) return state;
+      // A ready message is not a released lifecycle lock. Concurrent callers
+      // must await the full startup promise before borrowing its state.
       if (pending) return pending;
+      if (state && child?.exitCode === null && !child.killed) return state;
       pending = (async () => {
         const role = await hostRole();
         if (role === 'unknown') throw Object.assign(new Error('无法核对插件宿主类型，未自动启动 OFM；请确认系统允许读取父进程信息后重试。'), { code: 'OFM_HOST_UNVERIFIED' });

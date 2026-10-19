@@ -3,11 +3,15 @@ import path from 'node:path';
 import { withFileLock } from './installation-state.mjs';
 import { projectFingerprint, checkSources, prepareCandidate, jsonFile, writeJSON } from './upstream-sync.mjs';
 
-const defaults = { enabled: true, autoBuild: true, intervalHours: 24, checkUpstream: true, checkModels: true, healthIntervalMinutes: 15, hideUnavailable: false };
+const defaults = { enabled: true, autoBuild: true, intervalHours: 24, checkUpstream: true, checkModels: false, healthIntervalMinutes: 15, hideUnavailable: false, failoverEnabled: true, fallbackModels: [], maxAttempts: 3 };
 export function updatePreferences(value = {}) {
   const result = { ...defaults, ...value };
+  // Migration: legacy automatic inference checks cannot re-enable themselves.
+  result.checkModels = false;
   if (typeof result.enabled !== 'boolean' || typeof result.autoBuild !== 'boolean' || !Number.isInteger(result.intervalHours) || result.intervalHours < 1 || result.intervalHours > 168) throw new Error('更新设置无效：间隔应为 1–168 小时');
   if (['checkUpstream', 'checkModels', 'hideUnavailable'].some(key => typeof result[key] !== 'boolean') || !Number.isInteger(result.healthIntervalMinutes) || result.healthIntervalMinutes < 1 || result.healthIntervalMinutes > 1440) throw new Error('健康检查设置无效：间隔应为 1–1440 分钟');
+  if(typeof result.failoverEnabled!=='boolean'||!Array.isArray(result.fallbackModels)||result.fallbackModels.length>10||result.fallbackModels.some(id=>typeof id!=='string'||id.length>200||!id.trim()||/[\r\n\0]/.test(id))||!Number.isInteger(result.maxAttempts)||result.maxAttempts<1||result.maxAttempts>5)throw new Error('备用模型配置无效：最多10个模型，每轮1–5次尝试');
+  result.fallbackModels=[...new Set(result.fallbackModels.map(id=>id.trim()))];
   return Object.fromEntries(Object.keys(defaults).map(key => [key, result[key]]));
 }
 export function createUpstreamUpdater({ project, dataDir }, dependencies = {}) {

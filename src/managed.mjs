@@ -104,7 +104,7 @@ export async function createManagedPlugin(input, options = {}) {
             outgoing = nativeEffort(body, rows.find(row => row.id === body.model));
           }
           const response = await forwardChat(request, outgoing, { key: current.key });
-          if (!response.ok) await runtime.command('observe', { model: body.model, status: response.status, retryAfter: response.headers.get('retry-after') }).catch(() => {});
+          // The shared completion observes the actual candidate, not the alias.
           return response;
         } };
       },

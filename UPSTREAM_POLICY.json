@@ -21,7 +21,9 @@
     "assets/console-page.css",
     "src/reasoning-levels.mjs",
     "scripts/ofm-session-store-patch.mjs",
-    "scripts/ofm-stream-diagnostics-patch.mjs"
+    "scripts/ofm-stream-diagnostics-patch.mjs",
+    "update.md",
+    "src/on-demand.mjs"
   ],
   "excludedFeatures": [
     "recommended-projects",

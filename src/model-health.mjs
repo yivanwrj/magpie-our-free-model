@@ -1,8 +1,13 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import { forwardChat } from './transport.mjs';
 
+export function modelHealthLabel(row) {
+  return ({healthy:'最近调用成功',rate_limited:'暂时限流',denied:'请求被拒绝',forbidden:'请求被拒绝',unauthorized:'凭据异常',region_blocked:'地区或出口受限',lane_locked:'免费通道受限',authorization_required:'渠道需要授权',unavailable:'暂时不可用',probing:'正在检测'})[row?.state];
+}
 export function healthOptions(options = {}) {
-  const out = { intervalMs: 900000, timeoutMs: 20000, concurrency: 2, cooldownMs: 120000, tools: true, automatic: true, hideUnavailable: false, ...options };
+  const out = { intervalMs: 900000, timeoutMs: 20000, concurrency: 2, cooldownMs: 120000, tools: false, automatic: false, onDemand: true, hideUnavailable: false, ...options };
   for (const key of ['intervalMs', 'timeoutMs', 'concurrency', 'cooldownMs']) {
     if (!Number.isSafeInteger(out[key]) || out[key] < 1) throw new Error(`health.${key} must be a positive integer`);
   }
@@ -56,7 +61,28 @@ export function createModelHealth(service, options, dependencies = {}) {
   let cfg = healthOptions(options);
   const send = dependencies.send ?? forwardChat;
   const now = dependencies.now ?? Date.now;
-  const states = new Map();
+  const states = new Map(), lanes = new Map(), preferred = new Map();
+  const stateFile=path.join(path.dirname(service.keyFile),'model-health.json');
+  const persist=()=>{
+    const temp=stateFile+'.'+crypto.randomUUID()+'.tmp';
+    try {
+      if(fs.existsSync(stateFile)&&fs.lstatSync(stateFile).isSymbolicLink())return;
+      fs.writeFileSync(temp,JSON.stringify({schema:1,states:Object.fromEntries([...states].slice(-500)),lanes:Object.fromEntries(lanes),preferred:Object.fromEntries([...preferred].slice(-100))}),{mode:0o600,flag:'wx'});
+      fs.renameSync(temp,stateFile);
+    }catch{}finally{try{fs.rmSync(temp,{force:true});}catch{}}
+  };
+  try {
+    const stat=fs.lstatSync(stateFile);
+    if(stat.isFile()&&stat.size<1048576){const saved=JSON.parse(fs.readFileSync(stateFile,'utf8'));
+      const kinds=['healthy','rate_limited','forbidden','unauthorized','region_blocked','lane_locked','authorization_required','unavailable'];
+      if(saved.schema===1){
+        for(const [id,row]of Object.entries(saved.states??{}).slice(-500))if(kinds.includes(row.state)&&Number.isFinite(row.checkedAt)&&Number.isFinite(row.nextAt)&&row.nextAt<=now()+7*86400000)states.set(id,{state:row.state,checkedAt:row.checkedAt,nextAt:row.nextAt,failures:Number.isSafeInteger(row.failures)?row.failures:0,tools:row.tools===true,source:'restored'});
+        for(const [id,until]of Object.entries(saved.lanes??{}))if(id==='opencode-free'&&Number.isFinite(until)&&until>now()&&until<now()+7*86400000)lanes.set(id,until);
+        for(const [id,row]of Object.entries(saved.preferred??{}).slice(-100))if(typeof row.id==='string'&&Number.isFinite(row.until)&&row.until>now()&&row.until<now()+3600000)preferred.set(id,{id:row.id,until:row.until});
+      }
+    }
+  }catch{}
+
   let generation = 0;
   const controllers = new Set();
   let running, timer, closed = false;
@@ -67,7 +93,7 @@ export function createModelHealth(service, options, dependencies = {}) {
     controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), cfg.timeoutMs);
     try {
-      const body = { model, messages, max_tokens: 96, stream: false, ...extra };
+      const body = { model, messages, max_tokens: 96, stream: false, ofm_health_probe: true, ...extra };
       const response = await send(new Request(`${service.url}/v1/chat/completions`, { method: 'POST', signal: controller.signal }), body, { key: key() });
       if (!response.ok) {
         const retry = response.headers.get('retry-after');
@@ -125,7 +151,22 @@ export function createModelHealth(service, options, dependencies = {}) {
       }
       cfg = next; return api.preferences();
     },
-    visible(id) { return !cfg.hideUnavailable || api.available(id); },
+    visible(id) { return !cfg.hideUnavailable || (cfg.onDemand && !states.has(id)) || api.available(id); },
+    preferred(id){const row=preferred.get(id);return row&&row.until>now()?row.id:undefined;},
+    remember(primary,id){preferred.set(primary,{id,until:now()+1800000});persist();},
+    cooldownFor(id,row){const s=states.get(id);const own=s&&s.state!=='healthy'&&s.state!=='probing'?s.nextAt:0;const lane=row&&!row.channel&&!row.providerId&&!String(row.id).includes('/')&&!String(row.id).startsWith('combo:')?lanes.get('opencode-free')??0:0;return Math.max(0,Math.ceil((Math.max(own||0,lane)-now())/1000));},
+    async recordResult(id,result,row){
+      if(result.ok)states.set(id,{state:'healthy',tools:result.tools===true,checkedAt:now(),nextAt:now()+cfg.intervalMs,failures:0,source:'actual'});
+      else {
+        const failure=result.failure??{};const status=Number.isInteger(failure.status)&&failure.status>=400&&failure.status<=599?failure.status:502;
+        const detail=await healthFailure(Response.json({error:{code:failure.code}},{status}));
+        const failures=(states.get(id)?.failures??0)+1;
+        const nextAt=now()+Math.max(Number.isFinite(failure.providerRetryAfterMs)?failure.providerRetryAfterMs:0,Math.min(3600000,cfg.cooldownMs*2**Math.min(failures-1,5)));
+        states.set(id,{...detail,tools:false,checkedAt:now(),nextAt,failures,source:'actual'});
+        if(detail.state==='lane_locked'&&row&&!row.channel&&!row.providerId&&!String(row.id).includes('/')&&!String(row.id).startsWith('combo:'))lanes.set('opencode-free',Math.max(lanes.get('opencode-free')??0,nextAt));
+      }
+      persist();
+    },
     retryAfter(id) { const s = states.get(id); return s?.state === 'rate_limited' ? Math.max(0, Math.ceil((s.nextAt - now()) / 1000)) : 0; },
     available(id) { const s = states.get(id); return s?.state === 'healthy' && now() < s.nextAt; },
     reject(id, status, retryAfter) {
@@ -138,7 +179,9 @@ export function createModelHealth(service, options, dependencies = {}) {
     invalidate(prefix = '') { generation++; for (const id of states.keys()) if (id.startsWith(prefix)) states.delete(id); },
     snapshot() { return Object.fromEntries(states); },
     schedule(ids = [], { automatic = false } = {}) {
-      if (automatic && !cfg.automatic) return;
+      if (automatic && (cfg.onDemand || !cfg.automatic)) return;
+      if (cfg.onDemand && ids.length !== 1) return;
+      if (cfg.onDemand && api.cooldownFor(ids[0],service.runtime.catalog?.find(row=>row.id===ids[0]))) return;
       for (const id of ids) priority.add(id);
       if (closed || running) return running;
       running = (async () => {
@@ -170,8 +213,8 @@ export function createModelHealth(service, options, dependencies = {}) {
       })().finally(() => { running = undefined; if (!closed && priority.size) void api.schedule([], { automatic }).catch(() => {}); });
       return running;
     },
-    start() { timer = setInterval(() => { void api.schedule([], { automatic: true })?.catch(() => {}); }, 5000); timer.unref(); void service.ready.then(() => api.schedule([], { automatic: true })).catch(() => {}); },
-    async close() { closed = true; clearInterval(timer); for (const controller of controllers) controller.abort(); await running; },
+    start() { if(cfg.onDemand)return; timer = setInterval(() => { void api.schedule([], { automatic: true })?.catch(() => {}); }, 5000); timer.unref(); void service.ready.then(() => api.schedule([], { automatic: true })).catch(() => {}); },
+    async close() { closed = true; clearInterval(timer); for (const controller of controllers) controller.abort(); await running; persist(); },
   };
   return api;
 }

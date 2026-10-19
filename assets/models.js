@@ -5,6 +5,17 @@ const poll = fn => timers.push(setInterval(() => { if (!document.hidden) fn(); }
 signal?.addEventListener('abort', () => timers.forEach(clearInterval), { once: true });
 let providers = [];
 let maintenance = {};
+let choicesSignature = '';
+function loadChoices(data) {
+  const signature=JSON.stringify([data.catalog.map(row=>[row.id,row.name]),data.fallbackChoices??[]]);
+  if(signature===choicesSignature)return; choicesSignature=signature;
+  for(const [id,rows] of [['probeModel',data.catalog.filter(row=>!row.disabled&&!row.configuredOnly)],['fallbackChoice',data.fallbackChoices??[]]]) {
+    const node=$(id),old=node.value;node.replaceChildren();
+    const empty=document.createElement('option');empty.value='';empty.textContent='请选择模型';node.append(empty);
+    for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.name??row.id;node.append(option);}
+    node.value=rows.some(row=>row.id===old)?old:'';
+  }
+}
 async function api(route, body) {
   const r = await fetch(`/api/management/magpie/${route}`, body === undefined ? { signal } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
   const value = await r.json();
@@ -27,6 +38,8 @@ async function refresh() {
   const data = await api('models');
   providers = data.providers;
   maintenance.health = data.healthPreferences ?? {};
+  loadChoices(data);
+  $('lastRoute').textContent=data.lastRoute?`最近调用：${data.lastRoute.requested} → ${data.lastRoute.served??'全部失败或处于冷却'}；实际尝试 ${data.lastRoute.attempts} 个模型`:'尚无调用切换记录。';
   if (data.channelSource) $('channelDownload').href = data.channelSource.downloadUrl;
   $('startupWarnings').textContent = (data.startupWarnings ?? []).join('\n');
   $('startupWarnings').hidden = !data.startupWarnings?.length;
@@ -41,16 +54,16 @@ async function refresh() {
   for (const row of catalog) {
     const s = data.health[row.id];
     const tr = document.createElement('tr');
-    for (const text of [row.id, row.category, row.disabled ? '已保存 · 渠道未启用' : row.configuredOnly ? '已保存 · 未进入运行目录' : s ? `${labels[s.state] ?? s.state}${s.state === 'healthy' && !row.available ? ' · 待复核' : ''}${s.reason ? ' · ' + s.reason : ''}` : (maintenance.health.automatic === false ? '已保存 · 未验证（自动检查关闭）' : '已保存 · 等待检查'), s?.tools ? '已验证' : '未验证', row.disabled ? '渠道未启用' : s?.state === 'rate_limited' && s.nextAt > Date.now() ? '等待至 ' + new Date(s.nextAt).toLocaleString() : maintenance.health.automatic === false ? '自动检查已关闭' : s ? new Date(s.nextAt).toLocaleString() : '等待检查']) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
+    for (const text of [row.id, row.category, row.disabled ? '已保存 · 渠道未启用' : row.configuredOnly ? '已保存 · 未进入运行目录' : s ? `${labels[s.state] ?? s.state}${s.state === 'healthy' && !row.available ? ' · 待复核' : ''}${s.reason ? ' · ' + s.reason : ''}` : (maintenance.health.onDemand ? '已保存 · 使用时检查' : maintenance.health.automatic === false ? '已保存 · 未验证（自动检查关闭）' : '已保存 · 等待检查'), s?.tools ? '已验证' : '未验证', row.disabled ? '渠道未启用' : s?.state === 'rate_limited' && s.nextAt > Date.now() ? '等待至 ' + new Date(s.nextAt).toLocaleString() : maintenance.health.onDemand ? '使用时更新' : maintenance.health.automatic === false ? '自动检查已关闭' : s ? new Date(s.nextAt).toLocaleString() : '等待检查']) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
     $('rows').append(tr);
   }
 }
 const run = fn => fn().catch(e => { $('status').textContent = e.message + (e.status === 401 ? '；管理会话已过期，请从 Magpie 重新打开控制台。' : ''); });
 $('source').onchange = choose;
-$('provider').onsubmit = event => { event.preventDefault(); run(async () => { const saved = await api('provider', { id: $('source').value, enabled: $('enabled').checked, apiKey: $('key').value, clearKey: $('clear').checked, models: $('models').value.split('\n').map(s => s.trim()).filter(Boolean), baseUrl: $('base').value }); $('key').value = ''; $('status').textContent = saved.enabled === false ? '已保存，但渠道未启用；请勾选启用后再次保存。' : saved.probeQueued === false ? '已保存；推理服务暂停，启用服务后再探测。' : '已保存并优先排队探测：' + (saved.models ?? []).join('、') + '。下方始终显示已保存模型；默认保留已启用模型；启用严格隐藏后才按健康状态过滤。'; await refresh(); }); };
+$('provider').onsubmit = event => { event.preventDefault(); run(async () => { const saved = await api('provider', { id: $('source').value, enabled: $('enabled').checked, apiKey: $('key').value, clearKey: $('clear').checked, models: $('models').value.split('\n').map(s => s.trim()).filter(Boolean), baseUrl: $('base').value }); $('key').value = ''; $('status').textContent = saved.enabled === false ? '已保存，但渠道未启用；请勾选启用后再次保存。' : saved.probeQueued === false ? '已保存；实际使用所选模型时检查，不批量发送测试请求。' : '已保存并优先排队探测：' + (saved.models ?? []).join('、') + '。下方始终显示已保存模型；默认保留已启用模型；启用严格隐藏后才按健康状态过滤。'; await refresh(); }); };
 $('discover').onclick = () => run(async () => { const data = await api('discover', { id: $('source').value }); $('models').value = data.models.join('\n'); $('status').textContent = data.message; $('candidateInfo').textContent = data.candidates ? data.candidates.map(row => `${row.name} [${({ 'free-router': '免费路由', free: '免费模型', 'zero-price-offer': '当前零价格／可能限时福利' })[row.kind] ?? row.kind}]`).join('；') : ''; });
 $('refresh').onclick = () => run(refresh);
-$('probe').onclick = () => run(async () => { const r = await api('probe', {}); $('status').textContent = r.message; await refresh(); });
+$('probe').onclick = () => run(async () => { if(!$('probeModel').value)throw new Error('请先选择一个模型'); const r = await api('probe', {model:$('probeModel').value}); $('status').textContent = r.message; await refresh(); });
 run(refresh); poll(() => run(refresh));
 
 let updatesLoaded = false;
@@ -61,7 +74,10 @@ async function refreshUpdates() {
     $('updateEnabled').checked = state.preferences.enabled;
     $('updateBuild').checked = state.preferences.autoBuild;
     $('checkUpstream').checked = state.preferences.checkUpstream;
-    $('checkModels').checked = state.preferences.checkModels;
+    $('checkModels').checked = false;
+    $('failoverEnabled').checked=state.preferences.failoverEnabled!==false;
+    $('fallbackModels').value=(state.preferences.fallbackModels??[]).join('\n');
+    $('maxAttempts').value=state.preferences.maxAttempts??3;
     $('healthMinutes').value = state.preferences.healthIntervalMinutes;
     $('hideUnavailable').checked = state.preferences.hideUnavailable;
     $('updateHours').value = state.preferences.intervalHours;
@@ -80,8 +96,8 @@ async function refreshUpdates() {
   $('downloadUpdate').hidden = !state.candidate;
 }
 const updateRun = fn => fn().catch(error => { $('updateStatus').textContent = error.message; });
-$('saveUpdates').onclick = () => updateRun(async () => { await api('upstream/settings', { enabled: $('updateEnabled').checked, autoBuild: $('updateBuild').checked, intervalHours: Number($('updateHours').value), checkUpstream: $('checkUpstream').checked, checkModels: $('checkModels').checked, healthIntervalMinutes: Number($('healthMinutes').value), hideUnavailable: $('hideUnavailable').checked }); updatesDirty = false; updatesLoaded = false; await refreshUpdates(); await refresh(); onSettingsSaved(); $('status').textContent = '已保存；服务设置中的探测开关和刷新间隔已同步。'; });
-$('checkUpdates').onclick = () => updateRun(async () => { if (!$('checkUpstream').checked && !$('checkModels').checked) throw new Error('请至少选择一个检查项目'); if ($('checkUpstream').checked) await api('upstream/check', {}); if ($('checkModels').checked) { const result = await api('probe', {}); $('status').textContent = result.message; } await refreshUpdates(); await refresh(); });
+$('saveUpdates').onclick = () => updateRun(async () => { await api('upstream/settings', { enabled: $('updateEnabled').checked, autoBuild: $('updateBuild').checked, intervalHours: Number($('updateHours').value), checkUpstream: $('checkUpstream').checked, checkModels: false, failoverEnabled:$('failoverEnabled').checked, fallbackModels:$('fallbackModels').value.split('\n').map(id=>id.trim()).filter(Boolean), maxAttempts:Number($('maxAttempts').value), healthIntervalMinutes: Number($('healthMinutes').value), hideUnavailable: $('hideUnavailable').checked }); updatesDirty = false; updatesLoaded = false; await refreshUpdates(); await refresh(); onSettingsSaved(); $('status').textContent = '已保存按需调用与备用顺序；后台推理探测保持关闭。'; });
+$('checkUpdates').onclick = () => updateRun(async () => { await api('upstream/check', {}); await refreshUpdates(); });
 $('buildUpdates').onclick = () => updateRun(async () => { await api('upstream/build', {}); await refreshUpdates(); });
 updateRun(refreshUpdates); poll(() => updateRun(refreshUpdates));
 
@@ -105,13 +121,14 @@ $('cleanUpdates').onclick = () => updateRun(async () => { const result = await a
 function dependencies() {
   const master = $('updateEnabled').checked;
   $('checkUpstream').disabled = !master;
-  $('checkModels').disabled = !master;
+  $('checkModels').disabled = true;
   $('updateBuild').disabled = !master || !$('checkUpstream').checked;
   $('updateHours').disabled = !master || !$('checkUpstream').checked;
-  $('healthMinutes').disabled = !master || !$('checkModels').checked;
+  $('healthMinutes').disabled = false;
 }
-for (const id of ['updateEnabled','checkUpstream','checkModels','updateBuild','updateHours','healthMinutes','hideUnavailable']) {
+for (const id of ['updateEnabled','checkUpstream','checkModels','updateBuild','updateHours','healthMinutes','hideUnavailable','failoverEnabled','fallbackModels','maxAttempts']) {
   $(id).oninput = () => { updatesDirty = true; dependencies(); };
 }
+$('addFallback').onclick=()=>{const id=$('fallbackChoice').value;if(!id)return;const ids=new Set($('fallbackModels').value.split('\n').map(row=>row.trim()).filter(Boolean));ids.add(id);$('fallbackModels').value=[...ids].join('\n');updatesDirty=true;};
 return { refresh: () => Promise.all([refresh(), refreshUpdates()]) };
 }

@@ -3,7 +3,7 @@ import { closeManagedServices } from './graceful-stop.mjs';
 import { inspectService, lockMessage } from './service-diagnostics.mjs';
 import { fileURLToPath } from 'node:url';
 import { createUpstreamUpdater } from './upstream-update.mjs';
-import { createModelHealth } from './model-health.mjs';
+import { createModelHealth, modelHealthLabel } from './model-health.mjs';
 import { createManagementExtension } from './management-extension.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,7 +50,7 @@ lines.once('line', async line => {
     service = await startStandalone({ dataDir: settings.dataDir, port: settings.port,
       managementExtension: extension, channelBusiness, refresh: settings.refresh !== false, eacCredential: eacSource.credentialOf, eacSetup: eacSource.setup,
       logger: { info() {}, warn() {}, error() {} } });
-    health = createModelHealth(service, settings.health);
+    health = createModelHealth(service, {...settings.health,onDemand:true,automatic:false,tools:false});
     updater = createUpstreamUpdater({ project: fileURLToPath(new URL('../', import.meta.url)), dataDir: settings.dataDir });
     await extension.initialize();
     health.start();
@@ -74,7 +74,7 @@ lines.once('line', async line => {
 });
 lines.on('close', () => { if (started && service) void stop(); else if (!started) process.exit(0); });
 function applyMaintenance(prefs) {
-  health?.configure({ automatic: prefs.enabled && prefs.checkModels && service?.runtime.state().settings.enabled !== false, hideUnavailable: prefs.hideUnavailable, intervalMs: prefs.healthIntervalMinutes * 60000 });
+  health?.configure({ automatic: false, hideUnavailable: prefs.hideUnavailable, intervalMs: prefs.healthIntervalMinutes * 60000 });
 }
 async function executeCommand(command) {
   if (!service || stopped) throw new Error('内置服务正在关闭');
@@ -110,8 +110,7 @@ async function executeCommand(command) {
           accounts.value.accounts.some(account => account.enabled !== false) &&
           models.value.models.some(row => row.id === id && !row.disabled && !row.dead);
       } else value = service.runtime.publicModelRows().some(row => row.id === model);
-      value = value && health.visible(model);
-      if (value && health.retryAfter(model)) value = { limited: true, retryAfter: health.retryAfter(model) };
+      // The actual completion wrapper applies cooldown and scoped failover.
     }
     else if (command.type === 'observe') { health.reject(command.model, command.status, command.retryAfter); value = true; }
     else if (command.type === 'health') { value = health.snapshot(); }
@@ -119,12 +118,11 @@ async function executeCommand(command) {
       // The listener and console may be ready before the account/catalog
       // warm-up; the first model discovery must wait for that shared promise.
       await service.ready;
-      void health.schedule([], { automatic: true })?.catch(() => {});
       const healthState = health.snapshot();
       const allowed = new Set(service.runtime.publicModelRows().map(row => row.id));
       value = service.runtime.catalog.filter(row => allowed.has(row.id) && health.visible(row.id)).map(row => ({
-        tool_call: health.available(row.id) && healthState[row.id]?.tools === true, id: row.id, name: row.name,
-        health_label: ({ rate_limited: '暂时限流', denied: '授权被拒', unavailable: '暂时不可用' })[healthState[row.id]?.state], vision: row.vision,
+        tool_call: row.tool_call !== false && row.toolcall !== false, id: row.id, name: row.name,
+        health_label: modelHealthLabel(healthState[row.id]), vision: row.vision,
         context_window: row.contextWindow ?? row.context_window,
         max_tokens: row.maxOutput ?? row.max_tokens,
         input: row.input,

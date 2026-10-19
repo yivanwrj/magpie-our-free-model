@@ -133,7 +133,7 @@ export function createModelRuntime({
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
     warn: message => logger.warn?.(message) ?? logger.log?.(message),
     onRegionBlocked: () => {
-      if (disposed || reprobeTimer !== undefined) return
+      if (healthManaged || disposed || reprobeTimer !== undefined) return
       reprobeTimer = setTimeout(() => {
         reprobeTimer = undefined
         if (!disposed) void refreshAvailability(true).catch(error => {
@@ -305,7 +305,7 @@ export function createModelRuntime({
     return results
   }
   async function refreshAvailability(force = false) {
-    if (disposed || (!force && probeBackoffUntil > Date.now())) return {}
+    if (healthManaged || disposed || (!force && probeBackoffUntil > Date.now())) return {}
     if (probeRound !== null) return probeRound
     const round = runProbeRound()
     probeRound = round

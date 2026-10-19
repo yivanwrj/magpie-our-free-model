@@ -6,6 +6,7 @@ export function patchChannelSource(file, source) {
   ] : file.endsWith('/runtime.mjs') ? [
     ['createChannelRuntime({ dataDir, logger = console, stats })', 'createChannelRuntime({ dataDir, logger = console, stats, businessPath })'],
     ['workerData: { dataDir }', 'workerData: { dataDir, businessPath }'],
+    ["      return call('rpc', { call: { method: body.method, payload: body.payload } }, signal, undefined, 10 * 60000)", "      const result = await call('rpc', { call: { method: body.method, payload: body.payload } }, signal, undefined, 10 * 60000)\n      if (result?.ok === true && body.method === 'model.setDisabled') await refresh()\n      return result"],
   ] : [
     ["import {\n  apply,", "const {\n  apply,"],
     ["} from './business.mjs'", "} = await import(workerData.businessPath ?? new URL('./business.mjs', import.meta.url).href)"],

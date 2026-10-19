@@ -10,7 +10,7 @@ const MARKER = '.magpie-ofm-owner.json';
 const LOCK = '.magpie-ofm-lifecycle.lock';
 const packageDir = fileURLToPath(new URL('../', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const files = ['updates', 'settings.json', 'stats.json', 'availability.json', 'catalog.json', 'session-map.json',
+const files = ['updates', 'settings.json', 'stats.json', 'availability.json', 'catalog.json', 'session-map.json', 'model-health.json',
   'channel-credentials.json', 'eac-user.json', 'gemini-oauth.json', 'loomy-wechat.json', 'service.lock'];
 const runtimeName = name => /^(?:node-v\d+\.\d+\.\d+-[a-z0-9-]+|tailscale-\d+\.\d+\.\d+-[a-z0-9-]+|cloudflared-\d{4}\.\d+\.\d+-[a-z0-9-]+|(?:eac|channels)-[a-f0-9]{40}|\.(?:node|tailscale|eac|channels|cloudflared)-install-[a-zA-Z0-9]+)$/.test(name);
 
@@ -45,6 +45,10 @@ function alive(pid) {
   catch (error) { return error.code !== 'ESRCH'; }
 }
 
+// Only this process can recognize a completed lease of its own. A live PID
+// alone is not proof that its old lease is still active. Never reclaim an
+// unknown token, even if it happens to name the current PID.
+const releasedLeases = new Map();
 export async function withFileLock(file, work, timeout = 15000, staleEmptyAfter) {
   const nonce = crypto.randomBytes(16).toString('hex');
   const until = Date.now() + timeout;
@@ -56,7 +60,11 @@ export async function withFileLock(file, work, timeout = 15000, staleEmptyAfter)
       if (error.code !== 'EEXIST') throw error;
       try {
         const value = JSON.parse(await fs.readFile(file, 'utf8'));
-        if (Number.isSafeInteger(value.pid) && !alive(value.pid)) { await fs.rm(file, { force: true }); continue; }
+        if (Number.isSafeInteger(value.pid) && (!alive(value.pid) || value.pid === process.pid && releasedLeases.get(file) === value.nonce)) {
+          const confirm = JSON.parse(await fs.readFile(file, 'utf8'));
+          if (confirm.pid === value.pid && confirm.nonce === value.nonce) await fs.unlink(file);
+          continue;
+        }
       } catch {
         // Magpie's auth lock is deliberately empty and expires after ten
         // seconds. Our own locks require a provably dead owner instead.
@@ -75,6 +83,8 @@ export async function withFileLock(file, work, timeout = 15000, staleEmptyAfter)
   }
   try { return await work(); }
   finally {
+    releasedLeases.set(file, nonce);
+    if(releasedLeases.size>500)releasedLeases.delete(releasedLeases.keys().next().value);
     try { if (JSON.parse(await fs.readFile(file, 'utf8')).nonce === nonce) await fs.rm(file); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }

@@ -82,7 +82,9 @@ export async function createChannelRuntime({ dataDir, logger = console, stats, b
     handles: model => providers.some(provider => model.startsWith(`${provider}/`)),
     async rpc(body, signal) {
       if (typeof body?.method !== 'string' || !Object.hasOwn(body, 'payload')) throw Object.assign(new Error('渠道请求缺少 method 或 payload'), { statusCode: 400 })
-      return call('rpc', { call: { method: body.method, payload: body.payload } }, signal, undefined, 10 * 60000)
+      const result = await call('rpc', { call: { method: body.method, payload: body.payload } }, signal, undefined, 10 * 60000)
+      if (result?.ok === true && body.method === 'model.setDisabled') await refresh()
+      return result
     },
     async complete(request, onChunk) {
       const outcome = { text: '', toolCalls: [], usage: undefined, truncated: false, error: undefined }
