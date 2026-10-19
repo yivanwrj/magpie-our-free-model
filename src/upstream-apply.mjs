@@ -19,6 +19,7 @@ export async function applyCandidate({ project, dataDir, resultFile }) {
   if ((await fs.lstat(project)).isSymbolicLink()) throw new Error('安装目录不能是符号链接');
   const report = await jsonFile(resultFile);
   if (report.schema !== 1 || report.status !== 'ready' || report.tested !== true || typeof report.projectDir !== 'string') throw new Error('只能应用测试通过的候选');
+  if (report.security?.status !== 'no_flags') throw new Error('候选缺少新版安全检查结果，请重新构建并复核');
   try { await fs.lstat(path.join(project, '.git')); throw new Error('检测到 Git 工作区，请在 Git 中合并候选，不使用安装目录替换功能'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (dataDir === project || dataDir.startsWith(project + path.sep)) throw new Error('数据目录位于源码内，不能自动替换；请先分离数据');
   try {

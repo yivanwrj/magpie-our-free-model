@@ -5,22 +5,18 @@
 The full account-channel integration, standalone model runtime, EAC authorization,
 statistics and local management UI are from **Ebony-Vinyl/dsh-our-free-model**:
 https://github.com/Ebony-Vinyl/dsh-our-free-model
-Pinned commit: 9e6121802ab5b87e379a07141e94e36482809147 (reviewed 2026-10-14, upstream 2.2.0).
-90 upstream runtime/asset/license paths are retained under vendor/ofm; 82 are
-byte-for-byte copies. UPSTREAM.json records original and adapted hashes and the
-two omitted encrypted EAC data files. Eight adapted paths are documented: removing
-bundled Google OAuth defaults and the Loomy WeChat App ID, replacing vault.js with an empty stub, and adding
-an original EAC credential function to the standalone service, plus safe setup diagnostics in the EAC backend and both channel UI bundles, and selecting a verified original channel bundle through the service/Worker. The Worker also accepts harness messages/tools from the upstream native Anthropic gateway while retaining model enablement and reasoning/output-budget normalization.
-The generator patches are scripts/ofm-google-config-patch.mjs, scripts/ofm-eac-setup-patch.mjs and scripts/ofm-channel-source-patch.mjs. These adaptations
+Pinned commit: 494a1d84e5401b54c4760e9da08f4221824f6d10 (OFM 2.5.4; upstream author attribution retained).
+96 upstream paths are retained under vendor/ofm; UPSTREAM.json records every original hash and 15 adapted paths, along with omitted vault data files. Adaptations remove embedded OAuth/App ID defaults and distributed vault material, retain original credential loading, add safe EAC diagnostics, select verified channel business, preserve native Anthropic harness tools, and expose authenticated Magpie aggregation/health controls, and namespace official API model IDs to avoid account-channel collisions. The guarded service lock uses a loopback TCP guard on macOS and a fallback for Linux sandboxes without abstract sockets.
+The generator patches are scripts/ofm-google-config-patch.mjs, scripts/ofm-eac-setup-patch.mjs scripts/ofm-channel-source-patch.mjs scripts/ofm-management-extension-patch.mjs, scripts/ofm-console-integration-patch.mjs and scripts/ofm-free-update-patch.mjs. These adaptations
 avoid publishing credential material and comply with repository secret scanning.
 Normal startup downloads the complete original channel bundle, contracts, Qoder WASM and licenses from the official pinned source, verifies all file sizes and SHA-256 digests and loads it unchanged from a private runtime cache. Native Gemini OAuth defaults and Loomy WeChat configuration are used directly from that bundle; no extra local OAuth/App ID files or Loomy environment overrides are read. The public distribution-only fallback omits these defaults. Downloaded channel source is removed on uninstall. The remote gateway relays the native Loomy login listener and permits a session-bound Gemini callback return while retaining the registered localhost redirect URI. EAC installs the pinned original source in a private runtime cache by default; an explicitly selected local source overrides it. Server authorization/login/signature flow remains unchanged. No original vault decryption code, ciphertext or shards are distributed.
-The integration uses the upstream's published standalone entry point.
+The integration uses the upstream's published standalone entry point. OFM 2.5.4 recommendation/sponsor navigation and daily sponsor-notice mounts are omitted from the UI, and its standalone-unused picks backend is excluded. Local aggregate adaptations enforce zero-price OpenRouter endpoints and restore the vendor model ID on outbound requests.
 Original MIT license: vendor/ofm/LICENSE. Channel-pack attribution and MIT license:
 vendor/ofm/vendor/channel-pack/NOTICE.md and LICENSE. The channel pack's original
 upstream is iJetLi/deepseek-harness-codearts (Gitee), absorbed commit
 345f0a07b22713c0ae189ca7d8b97ec4f64626c6.
 
-Qoder's WASM runtime code is retained unchanged. Original EAC material is not shipped, logged, re-minted or published by this repository. The plugin downloads unchanged vault modules and their MIT license from the official upstream at the pinned commit, verifies pinned sizes and SHA-256 digests, and caches them privately (0700/0600). Version 0.9.1 uses the upstream 2.2.0 gateway migration files as a matched pair. Its existing openSeal function is used only inside the local service, matching upstream standalone. Decrypted values are never persisted. The user may disable this installation with managed.autoInstallEac: false or choose their own local upstream source. Original GitHub/Star authorization and server checks
+Qoder's WASM runtime code is retained unchanged. Original EAC material is not shipped, logged, re-minted or published by this repository. The plugin downloads unchanged vault modules and their MIT license from the official upstream at the pinned commit, verifies pinned SHA-256 digests, and caches them privately (0700/0600). Its existing openSeal function is used only inside the local service, matching upstream standalone. Decrypted values are never persisted. The user may disable this installation with managed.autoInstallEac: false or choose their own local upstream source. Original GitHub/Star authorization and server checks
 remain in place. No personal account credentials, local API keys or data directories
 are included.
 
@@ -66,3 +62,9 @@ cloudflared 原始 Apache-2.0 许可完整保留在 vendor/cloudflared/LICENSE�
 其源代码和第三方依赖信息见 https://github.com/cloudflare/cloudflared/tree/2026.10.0 。
 临时网关、下载器和进程管理代码位于本仓库 `src/`，未修改固定的上游管理服务。
 Tailscale 运行集成和下载器已移除；卸载清理仅保留旧缓存的识别规则。
+
+0.13.0 additionally makes managed health the single background probe and membership policy while retaining explicit user model hiding; the standalone core runtime adaptation is recorded in UPSTREAM.json.
+
+## Community fixes adapted in 0.14.1
+
+Reasoning-menu, readiness/session-store and stream-diagnostic ideas were adapted from mu-zi-lee/magpie-our-free-model PR #5 by 1007cordon-ux (d544400ba4ed816df4798804d401d93eb3bbfc2e) and PR #7 by Gyarados4157 (1a7f00bd7d3083f6a014fdb2162a34dd38bc6269), under the repository MIT license. See COMMUNITY_REVIEW_ZH.md for scope and additional validation.

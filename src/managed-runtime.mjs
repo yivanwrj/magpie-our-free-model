@@ -147,7 +147,7 @@ export function getManagedRuntime(input = {}, options = {}, dependencies = {}) {
       return new Promise((resolve, reject) => {
         const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); calls.delete(id); };
         const abort = () => { cleanup(); reject(signal.reason); };
-        const timer = setTimeout(() => { cleanup(); reject(new Error('内置服务管理请求超时')); }, type === 'console' ? 180000 : 5000);
+        const timer = setTimeout(() => { cleanup(); reject(new Error('内置服务管理请求超时')); }, type === 'console' ? 180000 : type === 'models' ? 45000 : 5000);
         calls.set(id, { resolve(value) { cleanup(); resolve(value); }, reject(error) { cleanup(); reject(error); } });
         signal?.addEventListener('abort', abort, { once: true });
         child.stdin.write(JSON.stringify({ ...payload, type, id }) + '\n');

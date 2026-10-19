@@ -16,3 +16,10 @@ ofm-management [hidden] { display: none !important; }
 .ofm-managed-page .settings-number .ui-input { width: 96px; }
 .ofm-managed-page .ofm-status { min-height: 20px; margin: 12px 0; }
 @media (max-width: 640px) { .ofm-managed-page .dashboard-heading { flex-wrap: wrap; gap: 12px; } }
+/* Prevent the cyber-theme cutout from clipping text-only card headings. */
+ofm-management .ofm-managed-page .settings-card-heading { clip-path: none !important; }
+ofm-management .ofm-managed-page .settings-card { padding: 24px; box-sizing: border-box; }
+ofm-management .ofm-managed-page .settings-card-heading > div { min-width: 0; }
+ofm-management .ofm-managed-page .settings-field > span { min-width: 0; overflow-wrap: anywhere; }
+ofm-management .ofm-managed-page .settings-toggle { flex: 0 0 40px; margin-left: 16px; }
+@media (max-width: 640px) { ofm-management .ofm-managed-page .settings-card { padding: 20px; } }

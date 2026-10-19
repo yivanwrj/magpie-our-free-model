@@ -1,6 +1,8 @@
 import { omitRecommendedPage, omitSponsorPage, patchOpenRouterPriceCeiling } from './ofm-free-update-patch.mjs';
 import { patchManagementExtension } from './ofm-management-extension-patch.mjs';
 import { patchConsoleNavigation } from './ofm-console-integration-patch.mjs';
+import { patchSessionStore, patchSessionService } from './ofm-session-store-patch.mjs';
+import { patchStreamDiagnostics } from './ofm-stream-diagnostics-patch.mjs';
 // Copy a pinned upstream runtime without changing its authentication or business logic.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +55,9 @@ for (const [file, patch, reason] of [
   ...['packages/standalone/service.mjs', 'packages/standalone/management.mjs', 'src/providers/index.js', 'src/core/runtime.js'].map(file => [file, source => patchManagementExtension(file, source), 'Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates.']),
   ['packages/standalone/eac.mjs', patchEacDiagnostics, 'Expose safe EAC installation diagnostics.'],
   ['src/aggregate.js', patchOpenRouterPriceCeiling, 'Enforce zero token/request pricing for OpenRouter free-only accounts.'],
+  ['src/upstream.js', patchSessionStore, 'Bind free-lane session persistence to the managed data directory with private file permissions. Community PR #7 adaptation.'],
+  ['packages/standalone/service.mjs', patchSessionService, 'Bind the session map after acquiring the service data directory.'],
+  ['src/forward.js', patchStreamDiagnostics, 'Send protocol-specific SSE errors from the last-resort HTTP error handler. Community PR #5 adaptation.'],
   ...channelPages.map(row => [row.path, omitRecommendedPage, 'Omit recommended-project navigation; outside requested update scope.']),
   ...['packages/standalone/web/app.js', ...channelPages.map(row => row.path)].map(file => [file, source => omitSponsorPage(file, source), 'Omit sponsor navigation and daily-notice mounts under the local no-announcement policy.']),
   ['packages/standalone/web/app.js', patchConsoleNavigation, 'Integrate channel and maintenance pages with the upstream sidebar, router and theme.'],

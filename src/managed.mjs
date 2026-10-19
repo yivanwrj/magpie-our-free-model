@@ -2,6 +2,7 @@ import { getManagedRuntime } from './managed-runtime.mjs';
 import { safeID, positive, chatRequest, forwardChat } from './transport.mjs';
 import { remoteByDefault } from './cloudflare-console.mjs';
 import fs from 'node:fs';
+import { magpieEfforts, nativeEffort } from './reasoning-levels.mjs';
 
 const PROVIDER = 'our-free-model';
 const SDK = '@ai-sdk/openai-compatible';
@@ -14,11 +15,7 @@ export function managedModel(row, base) {
   const inputs = row.input ?? row.modalities?.input ?? [];
   const rawEfforts = row.reasoning_efforts ?? row.reasoning?.efforts;
   const efforts = Array.isArray(rawEfforts) ? rawEfforts : [];
-  const variants = {};
-  for (const value of efforts) {
-    const effort = typeof value === 'string' ? value : value?.id;
-    if (safeID(effort)) variants[effort] = { reasoningEffort: effort };
-  }
+  const variants = magpieEfforts(efforts);
   return {
     id, providerID: PROVIDER, name: (row.name ?? id) + (row.health_label ? ` · ${row.health_label}` : ''),
     api: { id, url: base, npm: SDK },
@@ -52,7 +49,7 @@ export async function createManagedPlugin(input, options = {}) {
     try { conn = await runtime.connection(); }
     catch (error) { if (error.code === 'OFM_PRIMARY_REQUIRED') return {}; throw error; }
     try {
-      const rows = await runtime.command('models');
+      const rows = await runtime.command('models', {}, signal);
       const models = {};
       for (const row of rows) {
         const model = managedModel(row, conn.base);
@@ -101,7 +98,12 @@ export async function createManagedPlugin(input, options = {}) {
           request.signal.throwIfAborted();
           // The service checks its live catalog on every request. Never let an
           // old Magpie cache re-enable a model disabled in the console.
-          const response = await forwardChat(request, body, { key: current.key });
+          let outgoing = body;
+          if (typeof body.reasoning_effort === 'string') {
+            const rows = await runtime.command('models', {}, request.signal);
+            outgoing = nativeEffort(body, rows.find(row => row.id === body.model));
+          }
+          const response = await forwardChat(request, outgoing, { key: current.key });
           if (!response.ok) await runtime.command('observe', { model: body.model, status: response.status, retryAfter: response.headers.get('retry-after') }).catch(() => {});
           return response;
         } };
@@ -112,9 +114,9 @@ export async function createManagedPlugin(input, options = {}) {
         return { plan: 'Our Free Model 一体化；账号积分、用量、签到和请求日志见本机控制台', windows: [] };
       },
     },
-    provider: { id: PROVIDER, async models(provider, { auth } = {}) {
+    provider: { id: PROVIDER, async models(provider, { auth, signal } = {}) {
       if (!auth) return {};
-      return discover(auth, provider.models);
+      return discover(auth, provider.models, signal);
     } },
   };
 }

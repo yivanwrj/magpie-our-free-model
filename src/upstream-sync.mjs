@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { auditChanges, auditDiff, securityReport } from './update-security.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -145,7 +146,7 @@ export function failureDetail(error, phase) {
     ['Upstream EAC UI integration changed', 'EAC 页面变化，需要调整兼容补丁'],
   ];
   for (const [marker, message] of diagnostics) if (output.includes(marker)) return message;
-  return ({ prepare: '准备构建失败，请检查 Git 安装与网络并查看日志', merge: '上游合并未通过，请查看冲突列表与日志', vendor: '快照生成或完整性校验失败，请查看日志', tests: '候选检查或回归测试未通过，请查看日志', package: '候选打包失败，请查看日志' })[phase] ?? '更新任务失败，请查看日志';
+  return ({ security: '安全检查发现敏感变更或检查失败；查看 security-audit.json 并人工复核', prepare: '准备构建失败，请检查 Git 安装与网络并查看日志', merge: '上游合并未通过，请查看冲突列表与日志', vendor: '快照生成或完整性校验失败，请查看日志', tests: '候选检查或回归测试未通过，请查看日志', package: '候选打包失败，请查看日志' })[phase] ?? '更新任务失败，请查看日志';
 }
 
 // Merge into a disposable checkout. The installed project is never an output.
@@ -173,6 +174,16 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
   };
   const git = (args, cwd = candidate, log) => command('git', ['-c', 'core.hooksPath=' + path.join(build, 'no-hooks'), ...args], cwd, log);
   let phase = 'prepare';
+  const auditReports = [];
+  const gate = async (stage, findings, changed = []) => {
+    auditReports.push(securityReport(stage, findings, changed));
+    await writeJSON(path.join(build, 'security-audit.json'), { schema: 1, reports: auditReports });
+    if (findings.length) throw new Error('安全检查发现敏感代码变更，需要人工复核；候选不执行、不发布');
+  };
+  const auditProject = async stage => {
+    const report = await auditChanges(project, candidate, await projectFiles(candidate));
+    await gate(stage, report.findings, report.changed);
+  };
   try {
     await command('git', ['--version']);
     if (sources.adapter.latest !== refs.adapter.current) {
@@ -191,6 +202,8 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
       phase = 'merge'; dependencies.onPhase?.(phase);
       await git(['-c', 'user.name=OFM Updater', '-c', 'user.email=ofm-updater@localhost', 'merge', '--no-commit', '--no-ff', sources.adapter.latest], candidate, 'merge.log');
     }
+    phase = 'security'; dependencies.onPhase?.(phase);
+    await auditProject('adapter-before-execution');
     phase = 'vendor'; dependencies.onPhase?.(phase);
     const original = path.join(build, 'ofm-source');
     await git(['clone', '--no-checkout', dependencies.repositories?.ofm ?? `https://github.com/${SOURCES.ofm}.git`, original], build, 'ofm-clone.log');
@@ -198,6 +211,12 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
     await git(['checkout', '--detach', sources.ofm.latest], original);
     // Never follow rewritten history automatically.
     await git(['merge-base', '--is-ancestor', refs.ofm.current, sources.ofm.latest], original);
+    phase = 'security'; dependencies.onPhase?.(phase);
+    const diffFile = path.join(build, 'upstream-security.diff');
+    await git(['diff', '--no-ext-diff', '--no-textconv', '--unified=0', '--output=' + diffFile, refs.ofm.current, sources.ofm.latest], original);
+    try { await gate('upstream-before-execution', auditDiff(await fs.readFile(diffFile, 'utf8'))); }
+    finally { await fs.rm(diffFile, { force: true }); }
+    phase = 'vendor'; dependencies.onPhase?.(phase);
     await updateDownloadPins(candidate, original, sources.ofm.latest);
     await command(process.execPath, ['scripts/vendor-ofm.mjs', original, '--replace'], candidate, 'vendor.log');
     await verifySnapshot(candidate);
@@ -205,6 +224,11 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
     policy.adapter.commit = sources.adapter.latest;
     await writeJSON(path.join(candidate, 'UPSTREAM_POLICY.json'), policy);
     for (const file of policy.preserve) await fs.access(path.join(candidate, file));
+    phase = 'security'; dependencies.onPhase?.(phase);
+    const generated = new Set(['scripts/vendor-ofm.mjs', 'src/channel-source.mjs', 'src/eac-source.mjs']);
+    const runtimeAudit = await auditChanges(project, candidate, (await projectFiles(candidate)).filter(file => !generated.has(file)));
+    await gate('runtime-before-tests', runtimeAudit.findings, runtimeAudit.changed);
+    const beforeTestsFingerprint = await projectFingerprint(candidate);
     phase = 'tests'; dependencies.onPhase?.(phase);
     await command(process.execPath, ['scripts/check.mjs'], candidate, 'check.log');
     const testFiles = [];
@@ -212,6 +236,10 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
     if (!testFiles.length) throw new Error('候选缺少回归测试');
     const testOutput = await command(process.execPath, ['--test', '--test-concurrency=1', ...testFiles], candidate, 'tests.log');
     if (!/^(?:#|ℹ) tests [1-9]\d*$/m.test(testOutput) || !/^(?:#|ℹ) fail 0$/m.test(testOutput) || !/^(?:#|ℹ) cancelled 0$/m.test(testOutput)) throw new Error('回归测试没有完整成功报告，候选不发布');
+    phase = 'security'; dependencies.onPhase?.(phase);
+    if (await projectFingerprint(candidate) !== beforeTestsFingerprint) await gate('test-modified-project', [{ file: '.', rule: 'project-mutated-during-tests' }]);
+    const finalAudit = await auditChanges(project, candidate, (await projectFiles(candidate)).filter(file => !generated.has(file)));
+    await gate('after-tests-before-package', finalAudit.findings, finalAudit.changed);
     phase = 'package'; dependencies.onPhase?.(phase);
     const pkgFile = path.join(candidate, 'package.json');
     const pkg = await jsonFile(pkgFile);
@@ -219,7 +247,7 @@ export async function prepareCandidate({ project, workDir, sources, force = fals
     if (version) pkg.version = `${version[1]}.${version[2]}.${Number(version[3]) + 1}`;
     pkg.files = [...new Set([...(pkg.files ?? []), 'SYNC_RESULT.json', 'UPSTREAM_POLICY.json'])];
     await writeJSON(pkgFile, pkg);
-    const report = { baseProjectSha256: digest(JSON.stringify(baseFiles)), baseVersion: (await jsonFile(path.join(project, 'package.json'))).version, baseFiles, schema: 1, status: 'ready', tested: true, createdAt: Date.now(), sources, version: pkg.version, phase: 'ready' };
+    const report = { baseProjectSha256: digest(JSON.stringify(baseFiles)), baseVersion: (await jsonFile(path.join(project, 'package.json'))).version, baseFiles, schema: 1, status: 'ready', tested: true, security: { status: 'no_flags', stages: auditReports.length, limitation: 'Static heuristic checks only; not a security guarantee' }, createdAt: Date.now(), sources, version: pkg.version, phase: 'ready' };
     await writeJSON(path.join(candidate, 'SYNC_RESULT.json'), report);
     const note = `\n\n## Automatic upstream candidate ${new Date().toISOString()}\nAdapter: ${sources.adapter.latest}\nOFM: ${sources.ofm.latest}\nLocal adaptations retained; snapshot integrity and regression checks passed.\n`;
     await fs.appendFile(path.join(candidate, 'UPSTREAM_SYNC.md'), note);

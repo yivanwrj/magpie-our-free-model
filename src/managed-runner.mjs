@@ -116,6 +116,9 @@ async function executeCommand(command) {
     else if (command.type === 'observe') { health.reject(command.model, command.status, command.retryAfter); value = true; }
     else if (command.type === 'health') { value = health.snapshot(); }
     else if (command.type === 'models') {
+      // The listener and console may be ready before the account/catalog
+      // warm-up; the first model discovery must wait for that shared promise.
+      await service.ready;
       void health.schedule([], { automatic: true })?.catch(() => {});
       const healthState = health.snapshot();
       const allowed = new Set(service.runtime.publicModelRows().map(row => row.id));

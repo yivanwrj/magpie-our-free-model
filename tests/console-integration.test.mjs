@@ -30,3 +30,8 @@ test('legacy page only redirects to the authenticated native console', async () 
   assert.match(html, /url=\/#providers/);
   assert.doesNotMatch(html, /<form|background:|<script/);
 });
+
+ test('management headings override the cyber theme cutout without removing the card theme', async () => {
+ const css = await fs.readFile(new URL('../assets/console-page.css', import.meta.url), 'utf8');
+ assert.match(css, /ofm-management \.ofm-managed-page \.settings-card-heading \{ clip-path: none !important/);
+ });

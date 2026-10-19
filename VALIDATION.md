@@ -1,24 +1,95 @@
-# Validation — 0.9.1
+# Validation — 0.14.1
 
-## Upstream standalone/core/channel refresh - 2026-10-14
+0.14.1 community-fix validation — 2026-10-19 UTC
+Core remains OFM 2.5.4 / 494a1d84e5401b54c4760e9da08f4221824f6d10; adapter main baseline 36723c85.
+Full suite in a fresh isolated HOME/XDG/TMPDIR: 307 tests, 305 passed, 0 failed, 0 cancelled, 2 optional skipped; 15.36 seconds.
+Plugin contract, whitespace checks, original/adapted snapshot hashes and JavaScript parsing: PASS.
+New coverage: canonical menus and native effort translation (including off/disabled and collisions), first discovery with account catalog, private dataDir-bound session persistence, session-cache uninstall, protocol-specific last-resort streaming errors, recursive JSON Schema preservation and existing model-specific CodeArts token normalization.
+Real local loader/runner/signed-gateway EAC test proves canonical none maps through the declared disabled level to an actual upstream off request, rather than silently using the default high level. A canonical low request preserves the free lane's native Light token budget.
+All vendor/inference endpoints in regression tests are local substitutes. No real user account, Key or upstream model quota was used.
+RTK investigation used live GitHub source/API: Magpie c483feadfd88a5b8de8541de0567f3856822bde5, DSH master tree 687f282e8625c6b8d11ff58211a90524be2e4317, RTK issue #3847 and open PR #3934. Magpie/DSH code and user config were not modified.
+Community review read 10 issue-list records (6 PRs and 4 actual issues), PR file diffs and discussion comments. Selected fixes are adapted locally, not claimed merged in the upstream repository. See COMMUNITY_REVIEW_ZH.md.
+Development checks exposed the old raw-variant test expectation and Node writeHead header caching on an untraced stream; fixed the menu assertion and cached SSE Content-Type before the final successful full suite.
+Limits retained: no macOS/Bun/Windows end-to-end or browser visual acceptance; no assertion of live vendor eligibility or fixed free quotas. WorkBuddy client-specific refusals and System One routing still need separate live verification. The older intermittent uninstall cleanup issue is not claimed fixed.
 
-- Reviewed upstream 2.2.0 changes through `9e6121802ab5b87e379a07141e94e36482809147`.
-  Updated the fixed snapshot and EAC `/eac/v1` source files, with exact sizes and
-  SHA-256 checks for every downloaded file. No vault data, credentials or account
-  data are included in the package.
-- Adopted the upstream RTK Token Saver output-validation fixes for mixed webpage
-  content, timestamps, citations, Windows paths, filenames with spaces and
-  extensionless search hits. Focused regression tests cover these cases.
-- Chromium checked all six console pages at 1440x1000 and 390x844 in light and
-  dark themes with no uncaught script errors. The light mobile usage page has an
-  intentionally horizontally scrollable navigation strip; the content remains
-  readable and screenshots were captured for every page.
-- `npm run check` passed. `npm test`: **224 passed, 0 failed, 2 skipped**.
-  The two optional original-channel tests passed separately (**2/2**). Production
-  channel and EAC downloads passed size/hash verification and offline cache reuse.
-- Live vendor eligibility, real EAC GitHub authorization, Windows proxy behavior,
-  provider quotas and a public Cloudflare tunnel were not exercised in this run.
 
+## Historical validation
+
+# Validation — 0.14.0
+
+0.14.0 validation — 2026-10-19 UTC
+Core: OFM 2.5.4 / 494a1d84e5401b54c4760e9da08f4221824f6d10; adapter baseline unchanged at 36723c85.
+Full suite after native-console integration in fresh isolated HOME/XDG/TMPDIR: 300 tests, 298 passed, 0 failed, 0 cancelled, 2 optional skipped; 14.26 seconds.
+Final follow-up after healthy-model interval rescheduling: model-health and real managed-service suites, 40 tests, all passed. Native page polling-disposal and navigation tests also passed (5/5).
+Plugin contract, original/adapted snapshot hash verification, git whitespace and changed JavaScript parsing: PASS.
+Real loopback HTTP integration covers native-to-maintenance and maintenance-to-native switch/interval updates, service pause blocking inference probes, retained child options under a disabled master, restart persistence, native manual probing and shared health summary. Interval changes immediately recompute healthy expiry without shortening 429 cooldown.
+Native pages are registered in the upstream sidebar/router and reuse upstream theme/component CSS. Old /magpie-models redirects to /#providers. Custom-element lifecycle aborts page fetches and clears pollers on unmount.
+Visual limitation: Chromium could not be launched in this restricted environment (SIGTRAP), so actual browser rendering/light-dark/mobile screenshots were NOT accepted or verified. Native macOS Magpie/Bun appearance and real-account model availability are not claimed.
+The older intermittent uninstall cleanup issue is not claimed fixed. Upgrade by replacing source while retaining account data; do not uninstall/clear accounts merely to update.
+
+
+## Historical validation
+
+# Validation — 0.13.1
+
+0.13.1 validation — 2026-10-19 UTC
+Upstream: OFM 2.5.4 / 494a1d84e5401b54c4760e9da08f4221824f6d10.
+Adapter: 36723c85e55300b92e0308323c22780b90d8123a (no newer upstream commit at final check).
+Full suite in fresh isolated HOME/XDG/TMPDIR, OFM_UPDATE_TESTING=1: 296 tests, 294 passed, 0 failed, 0 cancelled, 2 optional skipped; 16.81 seconds.
+Plugin contract, git diff whitespace, built app/channel JavaScript parsing and original/adapted snapshot hashes: PASS.
+New regression coverage verifies retained channel asset imports, no sponsor notice render mounts, excluded recommendation/sponsor navigation, account diagnostics and fail-safe behavior for unknown UI shapes.
+The production updater initially refused the 2.5.4 navigation shape in its independent candidate and left installed code intact. The reproducible patch was manually adapted and the pinned snapshot regenerated successfully.
+Earlier full runs in the reused test environment hit existing intermittent uninstall leftovers/lifecycle-lock failures. A focused managed-service run passed all 22 tests; the subsequent completely fresh full run passed. This release does not claim that intermittent uninstall race is fixed. Normal updates preserve data; do not uninstall and clear accounts to upgrade.
+No native macOS/Bun/Windows or real-account acceptance is claimed. No live provider availability, quota recovery, tool/image eligibility or API key security audit is implied by these checks.
+
+
+## Historical validation
+
+# Validation — 0.11.0 (2026-10-17 UTC)
+
+- Selective OFM 2.4.0 source pin: 0b712bcbb887ae101cae5fdf935b0845761a1421. Snapshot generation, original/adapted file hashes and channel/EAC pin consistency pass. Existing credential stripping, local service security and native Anthropic channel adaptations remain active.
+- Final full suite: 239 tests, 237 passed, 0 failed, 2 optional skipped. Plugin contract, changed JavaScript syntax and git diff whitespace checks pass.
+- The 2 optional native-channel tests passed separately using the newly verified original 2.4.0 channel business bundle, mocked vendor replies and real local gateways.
+- Upstream OpenCode parity and free-lane wire regression scripts pass against the pinned source; shipped unadapted compatibility sources are hash-verified against that pin. Tests do not establish live OpenCode access eligibility.
+- New OpenRouter tests cover free variants and explicit zero-price offers, missing/paid/expired/non-text entries, extremely small positive prices, credential redaction, pricing increases, and the production aggregate poster's mandatory zero token/request price ceilings for free-only accounts.
+- Managed integration additionally exercises offer discovery, save-time price revalidation, real synthetic inference through the plugin/standalone to a mocked upstream, restoration of the vendor's original model ID, zero-price request constraints, refusal to save paid models and preservation of prior settings after refusal.
+- A new integration assertion exposed that the preexisting aggregate request builder passed its composite catalog ID to upstream. The poster now sets the original modelId explicitly; object and JSON-string bodies are tested.
+- The recommendation page is not enabled: navigation and persisted-tab admission are removed reproducibly, src/picks.js is excluded, and no recommendation-stat backend is installed. Built upstream assets can still contain unused rendering strings.
+- Existing health filtering, channel-download retry/fallback and reusable console launcher regressions remain in the suite. No live user account, API quota, OpenRouter purchase/billing, native desktop or Pi/DSH/Codex end-to-end session was tested. OpenRouter's server owns actual enforcement of its documented max_price routing constraints.
+
+Historical records follow; earlier intermediate failures are not current pass claims.
+
+# Validation — 0.10.2 (2026-10-16)
+
+- Added a reusable local management launcher. It locates registered OFM data, verifies the running service with the current Key and opens a fresh one-use handoff without signing out, restarting OFM or changing client configuration.
+- Dedicated tests: 3 passed. Covers repeated opens, one-use replay refusal, key rotation, unchanged settings, service survival after launcher closure, custom/ambiguous directories and offline errors without secret exposure.
+- Final full suite: 233 tests, 231 passed, 0 failed, 2 optional skipped. Plugin contract check and POSIX launcher syntax check passed.
+- An intermediate complete run hit the previously recorded lifecycle-lock fixture timeout during forced child restart. The final complete rerun passed; this update does not claim to change that lifecycle implementation.
+- Actual macOS/Windows desktop browser launching was not exercised here; browser handoff was validated over real loopback HTTP with a mocked management service. No Magpie GUI button integration is claimed.
+
+# Validation — 0.10.1 (2026-10-16)
+
+- Plugin contract check passed.
+- Full suite: 230 tests, 228 passed, 0 failed, 2 optional skipped.
+- Added interrupted-body retry regression; transport exhaustion returns the packaged fallback plus an explicit warning. Existing size/hash and symlink refusal tests still pass.
+- No change to the pinned OFM/channel/EAC source revision. Original channel downloads remain verified before import.
+- This repairs startup behavior under a failed channel-package download, not the user's actual proxy or upstream network. No live test on the user's computer was possible.
+
+# Validation — 0.10.0 (2026-10-16)
+
+- Base plugin: mu-zi-lee/magpie-our-free-model @ 9c19948c363716c752d197edc3844df932d8592e.
+- OFM snapshot/channel/EAC: e937077fa92d8cc21d3108d5d1e1f32f37e2534e. Regeneration succeeds; complete upstream/original/adapted SHA-256 checks pass.
+- `npm run check`: passes. `npm test`: **227 passed, 0 failed, 2 skipped** (229 tests including subtests).
+- Both optional native-channel tests passed separately with the verified current original channel bundle, fixture preload and mocked vendor replies: **2 passed, 0 failed**.
+- Health tests exercise actual loopback HTTP and production SSE normalization, tools/results, empty/truncated streams, timeouts, 401/403/429/500, recovery, bounded concurrency, duplicate discovery, expiry, removal, credential invalidation and live refusal.
+- Managed integration tests exercise authenticated aggregation controls, secret-free responses, source enable/disable, candidate discovery, real aggregate routing through the plugin/standalone to a mocked upstream, local/remote console UI routes, account/EAC metadata, image/tools, key rotation, child termination, stale-lock recovery and uninstall.
+- Intermediate concurrent runs intermittently timed out acquiring the existing uninstall lifecycle lock; isolated managed validation passed. The test script now serializes test files to avoid fixture process contention, and the final complete npm test run passed. Initial failures also exposed missing registry OpenRouter listing metadata and abstract sockets denied by this environment; both have explicit integration fixes.
+- No live Magpie executable, Pi/DSH client session, real vendor account, GitHub EAC login, Windows/macOS installation or real quota was available. Local fixture success is not live end-to-end acceptance or a guarantee that OpenCode free-tier access will be granted.
+- The management extension uses the existing authenticated, same-origin management router; secrets are never returned by the new listing/status route. UI uses textContent for upstream/model text.
+
+Historical records below describe earlier releases and are not claims of checks rerun here.
+
+# Validation — 0.9.0
 
 ## Upstream standalone/core/channel refresh - 2026-10-11
 
@@ -388,3 +459,83 @@ its local API boundary was represented by the documented fixture.
 EAC and account channels remain optional local-service integration, not native
 Magpie login implementations. GUI click flows were not exercised; CLI login
 and prompts were exercised through the same plugin host.
+
+
+## 0.12.0 updater validation
+Full sequential regression: 247 tests, 245 passed, 0 failed, 2 optional skips. Updater fixtures exercise real local Git history, compatible merge, conflict, patch and test failure, packaging, stopped application and candidate integrity. Full-project candidate build passed. No live channel eligibility or interactive client validation is claimed.
+
+
+## 0.12.1 / OFM 2.5.0 validation
+252 tests: 250 passed, 0 failed, 2 optional skips. Separately enabled original-bundle native-channel fixtures: 2 passed. Upstream free-lane wire assertions passed against a local HTTP fixture. The actual updater detected e490a98, regenerated the snapshot and passed the full suite before exporting a ready ZIP from the old core pin; its first failure against unmodified 0.12.0 correctly blocked publication.
+New regression tests exercise legacy session encoding, exact model effort metadata, browser launch fallback with a stub executor, malformed JSON-object requests and explicit streamed dispatch failures for Chat/Responses/Messages. Local status hints are allowlisted rather than echoing arbitrary child output.
+The full distributed snapshot is hash-checked. Live vendor access/quotas and interactive Magpie UI were not tested.
+
+
+## 0.12.2 UI feedback validation
+Two targeted tests execute the distributed management script against a mock DOM/API. Agnes model submission preserves the ID, account-bundle warnings remain separate after save and refresh, and validation errors do not request login unless HTTP 401. Both passed. Core source is unchanged from 0.12.1; its recorded full regression is retained, not claimed rerun.
+
+
+## 0.12.3 validation
+Full regression: 257 tests, 255 passed, 0 failed, 2 optional skipped. Added actual-service Agnes configuration/catalog/probe/publication coverage with a local upstream, queue-priority/probing-state coverage, transient build cleanup assertions on success and failure, and a real-socket test of the Darwin guard branch (platform simulated on the available host). The TTL regression uses an injected clock and retains its expiry/no-extension assertions. The final UI sort/labels change also passed both distributed-script UI tests. This is not a native macOS run or live Agnes entitlement check.
+
+
+## 0.12.4 / OFM 2.5.1 validation
+Actual update pipeline from e490a98 to 3df868aa: ready, 261 tests, 259 passed, 0 failed, 2 optional skipped. New tests verify EAC prefix-free labels with preserved routing IDs, missing/dead/owned process diagnosis, safe SIGTERM after revalidation, preservation of credentials, and refusal to signal foreign/changing owners. No native macOS or live user environment validation is claimed. The attached screenshot identifies a lock conflict but cannot establish its process owner remotely.
+
+
+## 0.12.5 validation
+Full regression: 264 tests, 262 passed, 0 failed, 2 optional skipped. Seven channel-source tests cover fixed origins, caching, corruption and integrity refusal, retry, immutable CDN fallback, verified local import and bundled-dependency reuse. Management integration rejects unauthenticated and invalid uploads. A separate real-service smoke uploaded the original ~2.9 MB business file over the authenticated binary endpoint and verified all six private cache hashes. No live vendor account/API or the user's macOS network/proxy was tested.
+
+
+## 0.12.6 validation
+Full suite: 268 tests, 266 passed, 0 failed, 2 optional skipped. Real independent Node host subprocess tests cover owner/borrower PID sharing, shared authenticated health/model/console commands, borrower exit preserving owner, owner exit and recovery, mismatched settings refusal, and simultaneous startup producing one service. Network fixtures are local. Tests reject unauthenticated and mismatched-identity requests. A stuck-updater shutdown regression proves the model service begins closing independently. No native macOS / actual Magpie desktop plus MCP-client test is claimed.
+
+
+## 0.12.7 validation
+Final sequential suite: 272 tests, 270 passed, 0 failed, 2 optional skipped. New role unit tests use the observed Magpie command forms and test macOS lookup failure. Independent host subprocess tests inject primary/auxiliary roles and verify zero OFM creation before the main host, later authenticated sharing, no takeover after main exit, reconnect after main restart, and borrowed close preserving the owner. Provider listing/loader/usage remain quiet when a primary is absent.
+An initial focused run saw a lifecycle lock-recovery timeout plus dependent cleanup failure. An unchanged isolated lifecycle rerun passed 20/20; the final full run also passed. This timeout was not reproduced or established fixed by the role change. Native Magpie/Bun/macOS interaction is unverified and remains a material validation limitation. The patch concerns OFM ownership, not terminating an MCP client that remains legitimately connected.
+
+
+## 0.12.8 / OFM 2.5.2 validation
+2026-10-18 UTC — Magpie OFM 0.12.8
+Core OFM 2.5.2: 8c2c0f1e3a1caf5cb682704a576d36a449a6780d
+Adapter main unchanged: 9c19948c363716c752d197edc3844df932d8592e
+Actual isolated automatic candidate build: ready; 272 tests, 270 passed, 0 failed, 2 optional skipped.
+Final isolated full regression: 275 tests, 273 passed, 0 failed, 0 cancelled, 2 optional skipped; 12.87 seconds.
+Plugin contract and git diff --check: PASS.
+Initial candidate correctly refused aggregate patch drift. After adaptation, regression exposed optional interface enumeration breaking console summaries; fixed with empty discovery metadata fallback. No diagnostic error stack shipped.
+Added regression coverage: Chinese/mixed combo identity stability; classified quota status/retry metadata and effort aliases; denied network-interface enumeration. Existing real HTTP OpenRouter tests verify object/string bodies, bare model IDs and forced zero-price limits; real subprocess tests verify auxiliary MCP never becomes OFM owner.
+Two direct non-isolated full-suite attempts produced truncated reports without totals and were not counted as passes. Isolated candidate and final runs completed with totals above.
+No native macOS/Bun/Windows host acceptance or live vendor account/region/quota validation is claimed.
+
+
+## 0.12.9 validation
+2026-10-18 UTC — Magpie OFM 0.12.9
+OFM 2.5.3 pin: f0b979fdf48d3915504f5f20e0a105596712f3c8
+Adapter pin: 36723c85e55300b92e0308323c22780b90d8123a
+Isolated automatic three-way adapter merge: conflicts detected and correctly blocked publication. Twelve stale snapshot/version/provenance conflicts manually reviewed and resolved; newer local runtime, patches and behavior retained. Adapter EAC byte-size checks, mounted-path/signature fixtures and RTK tests adopted. Core snapshot and download pins then regenerated from 2.5.3.
+Resolved isolated candidate: 284 tests, 282 passed, 0 failed, 2 optional skipped (11.89 s).
+First final-package run: 284 tests, 280 passed, 2 failed, 2 skipped. Uninstall live-service cleanup lock timed out; containing parent also counted failed. No implementation or assertion was disabled to obtain a pass.
+Final unchanged-code full rerun with fresh isolated HOME: 284 tests, 282 passed, 0 failed, 0 cancelled, 2 optional skipped (14.11 s).
+Plugin contract, snapshot original/adapted hashes and git diff --check: PASS.
+Additional unchanged upstream recovery harness: 119/131 checks passed. All EAC no-progress removal, legacy option, silent waiting, heartbeat, text/reasoning/tool, cancellation and no-duplicate-turn cases passed. Twelve DSH-plugin Forward bootstrap cases timed out in this environment. This harness is not claimed to pass fully; packaged Magpie integration/protocol tests passed independently.
+Intermittent cleanup-lock behavior remains an observed limitation; the rerun does not establish a root-cause fix. No native macOS/Bun/Windows host validation or live real vendor-account acceptance is claimed.
+Package scope excludes .git, dependency/build caches, user data and private downloaded account/EAC sources. UPGRADE_ZH.md describes full source replacement preserving the separate data directory.
+
+
+## 0.13.0 validation
+2026-10-18 UTC — Magpie OFM 0.13.0
+Core OFM remains 2.5.3 / f0b979fdf48d3915504f5f20e0a105596712f3c8
+Adapter base remains 36723c85e55300b92e0308323c22780b90d8123a
+Change scope: unified persisted automatic-maintenance settings, optional strict hiding (default off), 429 visibility and Retry-After admission, selected manual probes, suppression of legacy managed background inference probing/availability gating, historical conflict/candidate display fix, scoped completed-update cleanup, manual replacement/cleanup documentation.
+Focused health/updater/UI tests: PASS 22/22 before new coverage.
+Focused new health/updater/managed suite: PASS 46/46.
+After explicit legacy-gate fix, focused managed/legacy policy suite: PASS 23/23.
+Final full sequential suite with isolated HOME/XDG and no live vendor access: 293 tests, 291 passed, 0 failed, 0 cancelled, 2 optional skipped (14.29 seconds).
+Plugin contract, whitespace check and original/adapted snapshot hash verification: PASS.
+Regression evidence includes real HTTP 429 and local Retry-After response without repeating the upstream call; live strict-visibility switching; disabled maintenance surviving real service restart despite the standalone probe flag being true; old cached unavailability no longer hiding managed models while explicit user hiding remains; manual selected-model probes not touching unrelated models; cleanup preserving private settings/backups and unfinished work.
+During development, an old test assumed visibility implied completed inference; it now separately waits for verified health before asserting a fixture completion. A new restart test originally used a stale connection left by a preceding lifecycle test; fixed the fixture to acquire the live authenticated connection. One early full run also saw a residual isolated data directory; later focused/full runs passed without removing the assertion. One final attempt produced a truncated report without totals and was not counted as success.
+Known limits: publication still depends on live runtime catalog, explicit channel/model switches and account state; upstream removal is not overridden. Automatic master stops new update checks and inference probes, aborts active health probes, but already-started update builds may complete. User/manual checks remain available. No native macOS/Bun/Windows or real-account acceptance is claimed. Uninstall-lock intermittent behavior observed in earlier releases is not claimed root-cause fixed here.
+
+## 0.14.2
+自动维护标题取消主题切角裁剪；修复内容内边距。新增更新安全增量检查，在候选代码执行前、测试前和打包前检查；敏感改动阻断候选发布。完整回归 311 项：309 通过、2 跳过、0 失败。补充测试期间源码变化阻断检查后，上游更新与安全针对性测试 13 项全部通过。浏览器运行文件缺失，未完成实际截图验证。参见 UPDATE_SECURITY_ZH.md；静态检查不等于无泄漏保证。

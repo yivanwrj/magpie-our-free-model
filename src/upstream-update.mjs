@@ -88,7 +88,7 @@ export function createUpstreamUpdater({ project, dataDir }, dependencies = {}) {
         if (closed) { state.status = 'interrupted'; state.message = '更新构建已随插件停止；当前源码未改变'; await save(); return view(); }
         state.status = result.status;
         state.phase = result.phase;
-        state.message = result.status === 'ready' ? '自动合并与测试通过；可下载候选包，停用旧插件后安装' : result.status === 'conflict' ? '存在合并冲突，需要人工处理；当前插件未改变' : '构建或测试未通过；当前插件未改变';
+        state.message = result.status === 'ready' ? '自动合并与测试通过；可下载候选包，停用旧插件后安装' : result.status === 'conflict' ? '存在合并冲突，需要人工处理；当前插件未改变' : result.phase === 'security' ? '安全检查未通过，需要人工复核；当前插件未改变' : '构建或测试未通过；当前插件未改变';
         state.lastResult = result;
         if (result.status === 'ready') { state.candidate = result; state.fingerprint = fingerprint; }
         await prune();
@@ -114,7 +114,7 @@ export function createUpstreamUpdater({ project, dataDir }, dependencies = {}) {
       const base = path.resolve(directory, 'work');
       if (typeof root !== 'string' || !path.resolve(root).startsWith(base + path.sep)) return [];
       const logs = [];
-      for (const name of ['merge.log', 'vendor.log', 'check.log', 'tests.log', 'adapter-clone.log', 'ofm-clone.log']) {
+      for (const name of ['security-audit.json', 'merge.log', 'vendor.log', 'check.log', 'tests.log', 'adapter-clone.log', 'ofm-clone.log']) {
         try { const file = path.join(root, name); if ((await fs.lstat(file)).isSymbolicLink()) continue; logs.push({ name, text: (await fs.readFile(file, 'utf8')).slice(-16000) }); }
         catch (error) { if (error.code !== 'ENOENT') throw error; }
       }

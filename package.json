@@ -1,6 +1,6 @@
 {
   "name": "magpie-our-free-model",
-  "version": "0.9.1",
+  "version": "0.14.2",
   "description": "Our Free Model for Magpie: free pools, automatic EAC setup, account management and accountless Cloudflare console",
   "type": "module",
   "main": "./index.mjs",
@@ -22,7 +22,21 @@
     "VALIDATION.md",
     "UPSTREAM_SYNC.md",
     "NOTICE.md",
-    "LICENSE"
+    "LICENSE",
+    "INSTALL_ZH.md",
+    "TEST_RESULTS.txt",
+    "Open-OFM-Console.command",
+    "Open-OFM-Console.cmd",
+    "Open-OFM-Console.ps1",
+    "UPSTREAM_POLICY.json",
+    "AUTO_UPDATE_ZH.md",
+    "UPGRADE_ZH.md",
+    "MAINTENANCE_ZH.md",
+    "CLEANUP_ZH.md",
+    "CONSOLE_INTEGRATION_ZH.md",
+    "COMMUNITY_REVIEW_ZH.md",
+    "RTK_DSH_ZH.md",
+    "UPDATE_SECURITY_ZH.md"
   ],
   "keywords": [
     "magpie",
@@ -49,7 +63,12 @@
     "uninstall": "./uninstall.mjs"
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs vendor/zen-free/*.test.mjs",
-    "check": "node scripts/check.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs vendor/zen-free/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "console": "node scripts/open-console.mjs",
+    "upstream:check": "node scripts/sync-upstream.mjs",
+    "upstream:build": "node scripts/sync-upstream.mjs --build",
+    "upstream:apply": "node scripts/apply-upstream.mjs",
+    "service:status": "node scripts/service-status.mjs"
   }
 }

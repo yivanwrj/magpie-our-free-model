@@ -120,7 +120,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
       { id: 'vendor/paid', pricing: { prompt: '0.01', completion: '0.01' } },
     ] });
     if (pathname.endsWith('/models')) return json({ data: req.headers['x-ofm-signature']
-      ? [{ id: 'fixture-eac-model' }] : pathname === '/models' ? [{ id: 'fixture/free', isFree: true }]
+      ? [{ id: 'fixture-eac-model' }, { id: 'opencode/deepseek-v4-flash' }] : pathname === '/models' ? [{ id: 'fixture/free', isFree: true }]
       : [{ id: 'mimo-v2.6-flash-free' }] });
     if (pathname.includes('/console/enterprises/') || pathname.endsWith('/v3/config')) return json({ data: {
       models: [{ id: 'fixture-free', name: 'Fixture', credits: 'x0', maxInputTokens: 128000,
@@ -192,6 +192,8 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
   const result = await login.callback();
   const auth = { type: 'api', key: result.key, metadata: result.metadata };
   assert.equal(auth.key, 'managed');
+  const firstModels = await plugin.provider.models({ models: {} }, { auth });
+  assert.ok(firstModels['buddy/fixture-free'], 'the first discovery waits for the account catalog');
   assert.ok(!login.url.includes('ofm-'));
   assert.equal(new URL(login.url).port, String(consolePort));
   const conn = await runtime.connection();
@@ -307,7 +309,7 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     models = await until(async () => { const rows = await plugin.provider.models(provider, { auth }); return rows['buddy/fixture-free'] && rows['mimo-v2.6-flash-free'] ? rows : undefined; });
     assert.equal(models['buddy/fixture-free'].capabilities.input.image, true);
     assert.equal(models['buddy/fixture-free'].limit.context, 128000);
-    assert.deepEqual(Object.keys(models['mimo-v2.6-flash-free'].variants), ['light', 'balanced', 'deep']);
+    assert.deepEqual(Object.keys(models['mimo-v2.6-flash-free'].variants), ['low', 'medium', 'max']);
     assert.equal(models['mimo-v2.6-flash-free'].capabilities.input.image, true);
   });
   const loader = await plugin.auth.loader(async () => auth);
@@ -363,8 +365,8 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     assert.equal(response.status, 200); await response.text();
     assert.ok(JSON.stringify(requests.findLast(req => req.pathname.endsWith('/chat/completions')).body).includes(png));
   });
-  await t.test('anonymous Light effort applies the original hard token budget', async () => {
-    const response = await call('mimo-v2.6-flash-free', { reasoning_effort: 'light', max_tokens: 7000 });
+  await t.test('canonical low effort applies the original native Light token budget', async () => {
+    const response = await call('mimo-v2.6-flash-free', { reasoning_effort: 'low', max_tokens: 7000 });
     assert.equal(response.status, 200); await response.text();
     assert.equal(requests.findLast(req => req.pathname.endsWith('/chat/completions')).body.max_tokens, 4096);
   });
@@ -411,6 +413,12 @@ test('real bundled service: console handoff, channels, EAC, requests, key rotati
     assert.ok(requests.some(req => req.pathname === '/remote/eac/auth/poll'));
     assert.ok(requests.some(req => req.pathname === '/remote/eac/auth/ack'));
     assert.ok(requests.some(req => req.pathname === '/remote/eac/v1/models'));
+    const menu = (await plugin.provider.models(provider, { auth }))['opencode/deepseek-v4-flash'];
+    assert.deepEqual(menu.variants.none, { reasoningEffort: 'disabled' });
+    const off = await call('opencode/deepseek-v4-flash', { reasoning_effort: 'none' });
+    assert.equal(off.status, 200); await off.text();
+    const offRequest = requests.findLast(req => req.pathname === '/remote/eac/v1/chat/completions');
+    assert.equal(offRequest.body.reasoning_effort, 'none', 'native disabled off-patch reaches the signed gateway, rather than the default high level');
   });
   await t.test('stale Magpie catalog cannot re-enable a disabled model', async () => {
     const disabled = await api('/api/management/channels/rpc', { method: 'model.setDisabled', payload: { provider: 'buddy', modelId: 'fixture-free', disabled: true } });

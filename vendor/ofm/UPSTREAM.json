@@ -503,8 +503,8 @@
     {
       "path": "packages/standalone/service.mjs",
       "originalSha256": "a1a90b952bb4d3d09fb35665f3a1c5acdd2983bb44618883e3859e969bcbf866",
-      "sha256": "4ce8bee62e2f589bb96081f12c58f35448b7ced0118034d529f628e92f29886a",
-      "reason": "Accept an original EAC credential function and safe setup diagnostics; preserve server authorization and login flow. Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates. Select verified unchanged upstream channel business in the Worker."
+      "sha256": "e4998390f3b85776d4a05db6cd04cb12e068eecdd7f439814d31a36ecd594bc0",
+      "reason": "Accept an original EAC credential function and safe setup diagnostics; preserve server authorization and login flow. Add authenticated Magpie aggregation and unified health controls; avoid duplicate legacy health gates. Bind the session map after acquiring the service data directory. Select verified unchanged upstream channel business in the Worker."
     },
     {
       "path": "packages/standalone/management.mjs",
@@ -535,6 +535,18 @@
       "originalSha256": "5756af70d0421a4f22e7b40ce87afe7618333c55ba8010bde9423873c135d9cc",
       "sha256": "763c464ed715ee0e7fbc2e98c77c96a209ca59fbd2b32f0fe3e11b164e52c942",
       "reason": "Enforce zero token/request pricing for OpenRouter free-only accounts."
+    },
+    {
+      "path": "src/upstream.js",
+      "originalSha256": "4bf9db2c87a49e6ec9b4e81e65dd1e8f8e2046c286eb03c322d3c1896aa9cdca",
+      "sha256": "7c28a4fdf44af7397db5c584eee1f8c9192f1525a1e158f30f564eebb2c6d0c7",
+      "reason": "Bind free-lane session persistence to the managed data directory with private file permissions. Community PR #7 adaptation."
+    },
+    {
+      "path": "src/forward.js",
+      "originalSha256": "ba1d76052c978354987757df8f3796fb6d3ae7b40c283228ee62101cd463740e",
+      "sha256": "90570b579da8c00b792e5f947fac2631dd5e1682b290c7fa1204a47b0cc023d5",
+      "reason": "Send protocol-specific SSE errors from the last-resort HTTP error handler. Community PR #5 adaptation."
     },
     {
       "path": "packages/standalone/web/channels-Cf_uxhep.js",

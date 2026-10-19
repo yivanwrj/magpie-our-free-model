@@ -32,7 +32,7 @@ export async function sharedCommand(state, type, payload = {}, signal) {
   const settings = JSON.parse(await fs.readFile(state.keyFile, 'utf8'));
   const response = await fetch(state.url + '/api/management/magpie/runtime', { method: 'POST', redirect: 'error',
     headers: { authorization: `Bearer ${settings.forwardKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ ...payload, type, identity: state.identity }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(type === 'console' ? 180000 : 5000)]) : AbortSignal.timeout(type === 'console' ? 180000 : 5000) });
+    body: JSON.stringify({ ...payload, type, identity: state.identity }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(type === 'console' ? 180000 : type === 'models' ? 45000 : 5000)]) : AbortSignal.timeout(type === 'console' ? 180000 : type === 'models' ? 45000 : 5000) });
   const value = await response.json();
   if (!response.ok) throw new Error(value.error ?? '共享 OFM 服务管理请求失败');
   return value.value;

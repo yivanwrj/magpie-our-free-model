@@ -23,7 +23,7 @@
     <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>自动维护</h2><p>上游更新与模型健康共用总开关；关闭后仍可手动检查。</p></div></div>
       <label class="settings-field"><span><strong>启用自动维护</strong><small>关闭后停止自动更新检查和自动健康探测。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateEnabled"></label>
       <label class="settings-field"><span><strong>自动检查上游</strong><small>比较 OFM 和 Magpie 适配器提交。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="checkUpstream"></label>
-      <label class="settings-field"><span><strong>发现更新后构建候选</strong><small>在独立目录合并、测试和打包；当前运行源码保持服务。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateBuild"></label>
+      <label class="settings-field"><span><strong>发现更新后构建候选</strong><small>在独立目录合并、安全检查、测试和打包；敏感变更暂停，需人工复核。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="updateBuild"></label>
       <div class="settings-field settings-number-field"><label for="updateHours"><strong>上游检查间隔（小时）</strong><small>1–168 小时。</small></label><div class="settings-number"><input class="ui-input" id="updateHours" type="number" min="1" max="168" value="24"></div></div>
     </div>
     <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>模型健康</h2><p>与“服务设置 → 模型刷新”双向联动，不启动第二套探测。探测消耗上游额度，遇到 429 遵守冷却期。</p></div></div>
@@ -32,7 +32,7 @@
       <label class="settings-field"><span><strong>严格隐藏异常模型</strong><small>默认关闭。启用后仅发布健康有效模型；原有分组和单模型隐藏设置仍然生效。</small></span><input class="settings-toggle" role="switch" type="checkbox" id="hideUnavailable"></label>
     </div>
     <div class="settings-footer"><span>保存后同步原生服务设置</span><div class="settings-actions"><button class="ui-button ui-button-default" id="saveUpdates" type="button">保存维护设置</button></div></div>
-    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>检查与更新记录</h2><p>自动安装不会覆盖正在运行的插件。失败候选不可安装，账号与模型配置保留。</p></div></div>
+    <div class="ui-card settings-card"><div class="settings-card-heading"><div><h2>检查与更新记录</h2><p>自动安装不会覆盖正在运行的插件。失败候选不可安装，账号与模型配置保留。每次合并检查新增外连、凭据访问与动态执行；静态检查不能保证无泄漏。</p></div></div>
       <div class="ofm-actions"><button class="ui-button ui-button-outline" id="checkUpdates" type="button">立即检查所选项目</button><button class="ui-button ui-button-outline" id="buildUpdates" type="button">构建合并候选</button><button class="ui-button ui-button-ghost" id="showUpdateLogs" type="button">查看构建日志</button><button class="ui-button ui-button-ghost" id="cleanUpdates" type="button">清理历史更新缓存</button><a class="ui-button ui-button-default" id="downloadUpdate" href="/api/management/magpie/upstream/download" hidden>下载已验证候选包</a></div>
       <p id="cleanupStatus" role="status"></p><pre class="ofm-copy ofm-log" id="updateStatus" role="status"></pre>
     </div>

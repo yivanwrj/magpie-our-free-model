@@ -228,8 +228,16 @@ export function mintRequestId(timestamp = Date.now()) {
 const SESSION_MAP_FILE = 'session-map.json'
 let sessions
 
+let sessionRoot
+export function setSessionStoreRoot(dir) {
+  if (typeof dir !== 'string' || !path.isAbsolute(dir)) throw new TypeError('session store root must be an absolute path')
+  if (sessionRoot === dir) return
+  sessionRoot = dir
+  sessions = undefined
+}
+
 function sessionStorePath() {
-  try { return path.join(path.resolve(resolveDshHome(), DATA_DIR_NAME), SESSION_MAP_FILE) } catch { return undefined }
+  try { return path.join(sessionRoot ?? path.resolve(resolveDshHome(), DATA_DIR_NAME), SESSION_MAP_FILE) } catch { return undefined }
 }
 
 function loadSessions() {
@@ -252,8 +260,8 @@ function rememberSession(seed, id) {
     const file = sessionStorePath()
     if (file === undefined) return
     fs.mkdirSync(path.dirname(file), { recursive: true })
-    const temp = `${file}.tmp`
-    fs.writeFileSync(temp, JSON.stringify({ version: 1, at: Date.now(), sessions: Object.fromEntries(sessions) }, undefined, 2))
+    const temp = `${file}.${process.pid}.tmp`
+    fs.writeFileSync(temp, JSON.stringify({ version: 1, at: Date.now(), sessions: Object.fromEntries(sessions) }, undefined, 2), { mode: 0o600 })
     fs.renameSync(temp, file)
   } catch { /* non-fatal: the id still works, it just will not survive a restart */ }
 }

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "adapter": {
+    "repository": "mu-zi-lee/magpie-our-free-model",
+    "branch": "main",
+    "commit": "36723c85e55300b92e0308323c22780b90d8123a"
+  },
+  "ofm": {
+    "repository": "Ebony-Vinyl/dsh-our-free-model",
+    "branch": "main"
+  },
+  "preserve": [
+    "src/model-health.mjs",
+    "src/openrouter-free.mjs",
+    "src/console-launcher.mjs",
+    "src/upstream-update.mjs",
+    "scripts/ofm-free-update-patch.mjs",
+    "scripts/ofm-console-integration-patch.mjs",
+    "assets/console-page.js",
+    "assets/console-page.html",
+    "assets/console-page.css",
+    "src/reasoning-levels.mjs",
+    "scripts/ofm-session-store-patch.mjs",
+    "scripts/ofm-stream-diagnostics-patch.mjs"
+  ],
+  "excludedFeatures": [
+    "recommended-projects",
+    "DSH-host-updater",
+    "announcements",
+    "desktop-shell",
+    "sponsor-advertisements"
+  ]
+}

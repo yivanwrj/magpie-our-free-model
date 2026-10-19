@@ -1,0 +1,7 @@
+0.14.2 validation
+Plugin contract: passed.
+Full Node suite: 311 tests, 309 passed, 2 skipped, 0 failed.
+After adding the post-test project-mutation guard: updater/security regression suite 13 passed, 0 failed.
+Security gate fixtures: upstream credential upload and adapter build-script changes blocked before candidate execution; no candidate ZIP generated; report omits matched source text.
+UI: dark-theme heading clip-path override and layout padding verified in source test. Browser screenshot validation unavailable because the installed Playwright browser executable is missing. User Mac rendering still needs confirmation.
+No new upstream merge or complete third-party security audit is claimed.

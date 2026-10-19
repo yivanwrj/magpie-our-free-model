@@ -332,7 +332,15 @@ export async function startForwardServer({ config, complete, modelRows, log = ()
         const status = Number(error?.statusCode)
         const code = Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500
         openAiError(res, code, code === 500 ? 'server_error' : 'invalid_request_error', String(error?.message ?? error))
-      } else {
+      } else if (!res.writableEnded && !res.destroyed) {
+        const message = String(error?.message ?? error)
+        const type = String(res.getHeader('content-type') ?? '')
+        if (type.includes('text/event-stream')) {
+          const pathname = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '')
+          if (pathname.endsWith('/messages')) res.write('event: error\ndata: ' + JSON.stringify({ type: 'error', error: { type: 'api_error', message } }) + '\n\n')
+          else if (pathname.endsWith('/responses')) res.write('event: error\ndata: ' + JSON.stringify({ type: 'error', code: 'server_error', message }) + '\n\n')
+          else { res.write('data: ' + JSON.stringify({ error: { type: 'server_error', message } }) + '\n\n'); res.write('data: [DONE]\n\n') }
+        }
         res.end()
       }
     })
@@ -728,6 +736,7 @@ export function startHeartbeat(res, intervalMs = SSE_HEARTBEAT_MS) {
 }
 
 function openStreamHeaders(res, heartbeatMs = SSE_HEARTBEAT_MS) {
+  res.setHeader('content-type', 'text/event-stream; charset=utf-8')
   res.writeHead(200, {
     ...corsHeaders(),
     'content-type': 'text/event-stream; charset=utf-8',
